@@ -18,48 +18,79 @@ function badgeForInvoiceStatus(s: InvoiceStatus) {
   return { variant: "success" as const, label: "Paid" };
 }
 
+function badgeForInvoiceType(t: "IN" | "OUT") {
+  if (t === "IN") return { variant: "success" as const, label: "IN" };
+  return { variant: "warning" as const, label: "OUT" };
+}
+
 export default function FinanceInvoicesPage() {
   const { state, dispatch } = useFinance();
 
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"" | InvoiceStatus>("");
+  const [type, setType] = useState<"" | "IN" | "OUT">("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Invoice | null>(null);
 
   const [form, setForm] = useState({
     invoiceNo: "",
     customerName: "",
+    type: "IN" as "IN" | "OUT",
     issueDate: new Date().toISOString().slice(0, 10),
     dueDate: new Date().toISOString().slice(0, 10),
     currency: "TND",
+
+    // One line for PFE demo
     lineLabel: "Sale",
     lineQty: "1",
     lineUnitPrice: "0",
+
+    // Taxes (Tunisia style)
+    tvaRate: "0.19",
+    fodecRate: "0",
+    timbre: "0",
+    retenueRate: "0",
   });
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
-    return state.invoices.filter((i) => {
-      const matchQ =
-        !query ||
-        i.invoiceNo.toLowerCase().includes(query) ||
-        i.customerName.toLowerCase().includes(query);
-      const matchS = !status || i.status === status;
-      return matchQ && matchS;
-    });
-  }, [state.invoices, q, status]);
+    return state.invoices
+      .filter((i) => {
+        const matchQ =
+          !query ||
+          i.invoiceNo.toLowerCase().includes(query) ||
+          i.customerName.toLowerCase().includes(query);
+
+        const matchS = !status || i.status === status;
+        const matchT = !type || i.type === type;
+
+        const matchFrom = !from || i.issueDate >= from;
+        const matchTo = !to || i.issueDate <= to;
+
+        return matchQ && matchS && matchT && matchFrom && matchTo;
+      })
+      .sort((a, b) => b.issueDate.localeCompare(a.issueDate));
+  }, [state.invoices, q, status, type, from, to]);
 
   const openCreate = () => {
     setEditing(null);
     setForm({
       invoiceNo: `INV-${String(Date.now()).slice(-4)}`,
       customerName: "",
+      type: "IN",
       issueDate: new Date().toISOString().slice(0, 10),
       dueDate: new Date().toISOString().slice(0, 10),
       currency: "TND",
       lineLabel: "Sale",
       lineQty: "1",
       lineUnitPrice: "0",
+      tvaRate: "0.19",
+      fodecRate: "0",
+      timbre: "0",
+      retenueRate: "0",
     });
     setOpen(true);
   };
@@ -70,12 +101,19 @@ export default function FinanceInvoicesPage() {
     setForm({
       invoiceNo: inv.invoiceNo,
       customerName: inv.customerName,
+      type: inv.type ?? "IN",
       issueDate: inv.issueDate,
       dueDate: inv.dueDate,
       currency: inv.currency,
+
       lineLabel: first?.label ?? "Sale",
       lineQty: String(first?.qty ?? 1),
       lineUnitPrice: String(first?.unitPrice ?? 0),
+
+      tvaRate: String(inv.taxes?.tvaRate ?? 0.19),
+      fodecRate: String(inv.taxes?.fodecRate ?? 0),
+      timbre: String(inv.taxes?.timbre ?? 0),
+      retenueRate: String(inv.taxes?.retenueRate ?? 0),
     });
     setOpen(true);
   };
@@ -87,10 +125,12 @@ export default function FinanceInvoicesPage() {
       id: editing?.id ?? `i-${Date.now()}`,
       invoiceNo: form.invoiceNo.trim(),
       customerName: form.customerName.trim(),
+      type: form.type,
       issueDate: form.issueDate,
       dueDate: form.dueDate,
       status: editing?.status ?? "Draft",
       currency: form.currency,
+
       lines: [
         {
           id: editing?.lines?.[0]?.id ?? `il-${Date.now()}`,
@@ -99,6 +139,15 @@ export default function FinanceInvoicesPage() {
           unitPrice: Number(form.lineUnitPrice) || 0,
         },
       ],
+
+      // Taxes
+      taxes: {
+        tvaRate: Math.max(0, Number(form.tvaRate) || 0),
+        fodecRate: Math.max(0, Number(form.fodecRate) || 0),
+        timbre: Math.max(0, Number(form.timbre) || 0),
+        retenueRate: Math.max(0, Number(form.retenueRate) || 0),
+      },
+
       paidAmount: editing?.paidAmount ?? 0,
       notes: editing?.notes,
     };
@@ -113,15 +162,20 @@ export default function FinanceInvoicesPage() {
     <div className="space-y-6">
       <Topbar
         title="Invoices"
-        subtitle="Create/send invoices, track status, export documents"
+        subtitle="Create/send invoices, track taxes, type IN/OUT, export documents"
         right={<Button onClick={openCreate}>Create Invoice</Button>}
       />
 
       <Card>
-        <CardHeader title="Invoice List" subtitle="Draft / Sent / Paid / Overdue" right={<Button variant="secondary">Export PDF/Excel</Button>} />
+        <CardHeader
+          title="Invoice List"
+          subtitle="Draft / Sent / Paid / Overdue"
+          right={<Button variant="secondary">Export PDF/Excel</Button>}
+        />
         <CardBody>
-          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-6">
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search invoice/customer..." />
+
             <Select value={status} onChange={(e) => setStatus(e.target.value as any)}>
               <option value="">All Status</option>
               <option value="Draft">Draft</option>
@@ -129,27 +183,58 @@ export default function FinanceInvoicesPage() {
               <option value="Paid">Paid</option>
               <option value="Overdue">Overdue</option>
             </Select>
-            <div className="md:col-span-2 text-sm text-slate-500 dark:text-slate-400 flex items-center">
-              Status updates automatically after payments and due date.
+
+            <Select value={type} onChange={(e) => setType(e.target.value as any)}>
+              <option value="">All Types</option>
+              <option value="IN">IN (Customer)</option>
+              <option value="OUT">OUT (Supplier)</option>
+            </Select>
+
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+
+            <div className="text-sm text-slate-500 dark:text-slate-400 flex items-center">
+              Date filter uses issue date.
             </div>
           </div>
 
-          <Table headers={["Invoice", "Customer", "Amount", "Paid", "Due Date", "Status", "Actions"]}>
+          <Table headers={["Type", "Invoice", "Customer", "Total TTC", "Net (after retenue)", "Paid", "Due Date", "Status", "Actions"]}>
             {filtered.map((i) => {
-              const total = financeHelpers.invoiceTotal(i);
+              const totals = financeHelpers.invoiceTotals(i); // UPDATED helper (see store changes below)
               const st = badgeForInvoiceStatus(i.status);
+              const tp = badgeForInvoiceType(i.type ?? "IN");
 
               return (
                 <tr key={i.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                  <td className="px-4 py-3">
+                    <Badge variant={tp.variant}>{tp.label}</Badge>
+                  </td>
                   <td className="px-4 py-3 font-medium">{i.invoiceNo}</td>
                   <td className="px-4 py-3">{i.customerName}</td>
-                  <td className="px-4 py-3">{total.toLocaleString()} {i.currency}</td>
-                  <td className="px-4 py-3">{i.paidAmount.toLocaleString()} {i.currency}</td>
+
+                  <td className="px-4 py-3 font-semibold">
+                    {totals.gross.toLocaleString()} {i.currency}
+                  </td>
+
+                  <td className="px-4 py-3 font-semibold">
+                    {totals.net.toLocaleString()} {i.currency}
+                  </td>
+
+                  <td className="px-4 py-3">
+                    {i.paidAmount.toLocaleString()} {i.currency}
+                  </td>
+
                   <td className="px-4 py-3">{i.dueDate}</td>
-                  <td className="px-4 py-3"><Badge variant={st.variant}>{st.label}</Badge></td>
+
+                  <td className="px-4 py-3">
+                    <Badge variant={st.variant}>{st.label}</Badge>
+                  </td>
+
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="secondary" className="py-1.5" onClick={() => openEdit(i)}>Edit</Button>
+                      <Button variant="secondary" className="py-1.5" onClick={() => openEdit(i)}>
+                        Edit
+                      </Button>
                       {i.status === "Draft" ? (
                         <Button className="py-1.5" onClick={() => dispatch({ type: "INVOICE_SEND", payload: { invoiceId: i.id } })}>
                           Send
@@ -161,6 +246,12 @@ export default function FinanceInvoicesPage() {
               );
             })}
           </Table>
+
+          {filtered.length === 0 ? (
+            <div className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+              No invoices match your filters.
+            </div>
+          ) : null}
         </CardBody>
       </Card>
 
@@ -180,17 +271,18 @@ export default function FinanceInvoicesPage() {
             <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Invoice No</div>
             <Input value={form.invoiceNo} onChange={(e) => setForm((s) => ({ ...s, invoiceNo: e.target.value }))} />
           </div>
+
           <div>
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Customer</div>
-            <Input value={form.customerName} onChange={(e) => setForm((s) => ({ ...s, customerName: e.target.value }))} />
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Customer / Supplier</div>
+            <Input value={form.customerName} onChange={(e) => setForm((s) => ({ ...s, customerName: e.target.value }))} placeholder="Name..." />
           </div>
+
           <div>
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Issue Date</div>
-            <Input type="date" value={form.issueDate} onChange={(e) => setForm((s) => ({ ...s, issueDate: e.target.value }))} />
-          </div>
-          <div>
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Due Date</div>
-            <Input type="date" value={form.dueDate} onChange={(e) => setForm((s) => ({ ...s, dueDate: e.target.value }))} />
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Type</div>
+            <Select value={form.type} onChange={(e) => setForm((s) => ({ ...s, type: e.target.value as any }))}>
+              <option value="IN">IN (Customer)</option>
+              <option value="OUT">OUT (Supplier)</option>
+            </Select>
           </div>
 
           <div>
@@ -202,6 +294,20 @@ export default function FinanceInvoicesPage() {
             </Select>
           </div>
 
+          <div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Issue Date</div>
+            <Input type="date" value={form.issueDate} onChange={(e) => setForm((s) => ({ ...s, issueDate: e.target.value }))} />
+          </div>
+
+          <div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Due Date</div>
+            <Input type="date" value={form.dueDate} onChange={(e) => setForm((s) => ({ ...s, dueDate: e.target.value }))} />
+          </div>
+
+          <div className="md:col-span-2">
+            <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">Line (PFE demo)</div>
+          </div>
+
           <div className="md:col-span-2">
             <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Line Label</div>
             <Input value={form.lineLabel} onChange={(e) => setForm((s) => ({ ...s, lineLabel: e.target.value }))} />
@@ -211,9 +317,37 @@ export default function FinanceInvoicesPage() {
             <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Quantity</div>
             <Input type="number" min={1} value={form.lineQty} onChange={(e) => setForm((s) => ({ ...s, lineQty: e.target.value }))} />
           </div>
+
           <div>
             <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Unit Price</div>
             <Input type="number" min={0} value={form.lineUnitPrice} onChange={(e) => setForm((s) => ({ ...s, lineUnitPrice: e.target.value }))} />
+          </div>
+
+          <div className="md:col-span-2">
+            <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">Taxes</div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              TVA + FODEC + Timbre, with Retenue à la source (withholding) applied on HT.
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">TVA rate</div>
+            <Input type="number" step="0.01" min={0} value={form.tvaRate} onChange={(e) => setForm((s) => ({ ...s, tvaRate: e.target.value }))} />
+          </div>
+
+          <div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">FODEC rate</div>
+            <Input type="number" step="0.01" min={0} value={form.fodecRate} onChange={(e) => setForm((s) => ({ ...s, fodecRate: e.target.value }))} />
+          </div>
+
+          <div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Timbre</div>
+            <Input type="number" step="0.1" min={0} value={form.timbre} onChange={(e) => setForm((s) => ({ ...s, timbre: e.target.value }))} />
+          </div>
+
+          <div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Retenue rate</div>
+            <Input type="number" step="0.01" min={0} value={form.retenueRate} onChange={(e) => setForm((s) => ({ ...s, retenueRate: e.target.value }))} />
           </div>
         </div>
       </Modal>

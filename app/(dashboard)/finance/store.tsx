@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useMemo, useReducer } from "react";
 
 export type InvoiceStatus = "Draft" | "Sent" | "Paid" | "Overdue";
-export type PaymentMethod = "Bank" | "Cash" | "Cheque" | "Card";
+export type PaymentMethod = "Bank" | "Cash" | "Cheque" | "Card" | "Kimbial";
 
 export type InvoiceLine = {
   id: string;
@@ -12,16 +12,25 @@ export type InvoiceLine = {
   unitPrice: number;
 };
 
+export type InvoiceTaxes = {
+  tvaRate: number;
+  fodecRate: number;
+  timbre: number;
+  retenueRate: number;
+};
+
 export type Invoice = {
   id: string;
   invoiceNo: string;
   customerName: string;
+  type?: "IN" | "OUT";
   issueDate: string; // YYYY-MM-DD
   dueDate: string;   // YYYY-MM-DD
   status: InvoiceStatus;
   currency: string;  // "TND", "EUR" etc (UI)
   notes?: string;
   lines: InvoiceLine[];
+  taxes?: InvoiceTaxes;
   paidAmount: number; // accumulated payments
 };
 
@@ -32,6 +41,8 @@ export type Payment = {
   amount: number;
   method: PaymentMethod;
   reference?: string;
+  termPreset?: "1M" | "3M" | "CUSTOM";
+  customTermDays?: number;
 };
 
 export type ReminderLog = {
@@ -112,7 +123,29 @@ const initial: State = {
 };
 
 function invoiceTotal(inv: Invoice) {
-  return inv.lines.reduce((acc, l) => acc + l.qty * l.unitPrice, 0);
+  return invoiceTotals(inv).gross;
+}
+
+function invoiceTotals(inv: Invoice) {
+  const ht = inv.lines.reduce((acc, l) => acc + l.qty * l.unitPrice, 0);
+  const taxes = inv.taxes;
+
+  if (!taxes) {
+    const net = ht;
+    return { ht, gross: ht, net, due: Math.max(0, net - (inv.paidAmount ?? 0)) };
+  }
+
+  const fodec = ht * Math.max(0, taxes.fodecRate || 0);
+  const tvaBase = ht + fodec;
+  const tva = tvaBase * Math.max(0, taxes.tvaRate || 0);
+  const timbre = Math.max(0, taxes.timbre || 0);
+  const retenue = ht * Math.max(0, taxes.retenueRate || 0);
+
+  const gross = ht + fodec + tva + timbre;
+  const net = gross - retenue;
+  const due = Math.max(0, net - (inv.paidAmount ?? 0));
+
+  return { ht, gross, net, due };
 }
 
 function today() {
@@ -202,4 +235,4 @@ export function useFinance() {
   return ctx;
 }
 
-export const financeHelpers = { invoiceTotal };
+export const financeHelpers = { invoiceTotal, invoiceTotals };
