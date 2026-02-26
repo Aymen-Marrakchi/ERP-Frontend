@@ -47,11 +47,11 @@ const nav: NavModule[] = [
   {
     module: "Sales",
     items: [
-      { label: "Orders", href: "/sales/orders" },
-      { label: "Preparation", href: "/sales/preparation" },
-      { label: "Shipments", href: "/sales/shipments" },
-      { label: "Planning", href: "/sales/planning" },
-      { label: "Returns (RMA)", href: "/sales/returns" },
+      { label: "Orders", href: "/commercial/sales/orders" },
+      { label: "Preparation", href: "/commercial/logistics/preparation" },
+      { label: "Shipments", href: "/commercial/logistics/shipments" },
+      { label: "Planning", href: "/commercial/logistics/planning" },
+      { label: "Returns (RMA)", href: "/commercial/sales/returns" },
     ],
   },
   {
@@ -243,3 +243,4 @@ export function Sidebar() {
     </aside>
   );
 }
+
