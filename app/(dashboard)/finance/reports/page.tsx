@@ -8,18 +8,12 @@ import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { Table } from "@/components/ui/Table";
 import { useMemo, useState } from "react";
-import { useFinance } from "../store";
+import { useFinance, Transaction } from "../store";
 
 type PeriodPreset = "1M" | "3M" | "CUSTOM";
 
 function startOfTodayISO() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function addDaysISO(iso: string, days: number) {
-  const d = new Date(iso);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
 }
 
 function addMonthsISO(iso: string, months: number) {
@@ -28,16 +22,26 @@ function addMonthsISO(iso: string, months: number) {
   return d.toISOString().slice(0, 10);
 }
 
+// Fixed for Tunisian Dinar (3 decimals)
 function money(n: number) {
-  return n.toLocaleString();
+  return n.toFixed(3) + " TND";
 }
+
+// Translations maps for UI display
+const categoryLabel: Record<string, string> = {
+  Sales: "Ventes",
+  Suppliers: "Fournisseurs",
+  Transport: "Transport",
+  Payroll: "Salaires",
+  Other: "Autre",
+};
 
 export default function FinanceReportsPage() {
   const { state } = useFinance();
 
   const [preset, setPreset] = useState<PeriodPreset>("1M");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useState(addMonthsISO(startOfTodayISO(), -1));
+  const [to, setTo] = useState(startOfTodayISO());
 
   // Apply preset to dates
   const applyPreset = (p: PeriodPreset) => {
@@ -52,7 +56,6 @@ export default function FinanceReportsPage() {
       setFrom(addMonthsISO(today, -3));
       return;
     }
-    // CUSTOM: do not overwrite; user chooses
   };
 
   // Posted transactions in period
@@ -104,9 +107,9 @@ export default function FinanceReportsPage() {
 
   // Light “health” badges
   const netBadge = useMemo(() => {
-    if (report.net > 0) return <Badge variant="success">Positive</Badge>;
-    if (report.net < 0) return <Badge variant="warning">Negative</Badge>;
-    return <Badge variant="neutral">Break-even</Badge>;
+    if (report.net > 0) return <Badge variant="success">Bénéficiaire</Badge>;
+    if (report.net < 0) return <Badge variant="danger">Déficitaire</Badge>;
+    return <Badge variant="neutral">À l'équilibre</Badge>;
   }, [report.net]);
 
   const onPresetChange = (p: PeriodPreset) => {
@@ -116,40 +119,39 @@ export default function FinanceReportsPage() {
 
   const generate = () => {
     // UI-only button (filters already reactive)
-    // If you want, we can add a toast later.
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       <Topbar
-        title="Reports"
-        subtitle="P&L, Balance Sheet and ledger summaries (PFE model)"
-        right={<Button variant="secondary">Export PDF/Excel</Button>}
+        title="Rapports Financiers"
+        subtitle="Compte de résultat, Bilan et résumé du grand livre (Modèle simplifié PFE)"
+        right={<Button variant="secondary">Exporter PDF/Excel</Button>}
       />
 
       {/* Filters */}
       <Card>
-        <CardHeader title="Report Filters" subtitle="Select a period and generate" />
+        <CardHeader title="Filtres du Rapport" subtitle="Sélectionnez une période d'analyse" />
         <CardBody>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
             <Select value={preset} onChange={(e) => onPresetChange(e.target.value as PeriodPreset)}>
-              <option value="1M">Last 1 month</option>
-              <option value="3M">Last 3 months</option>
-              <option value="CUSTOM">Custom</option>
+              <option value="1M">1 Dernier Mois</option>
+              <option value="3M">3 Derniers Mois</option>
+              <option value="CUSTOM">Personnalisé</option>
             </Select>
 
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <Input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPreset("CUSTOM"); }} />
+            <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPreset("CUSTOM"); }} />
 
             <div className="md:col-span-2 flex items-center gap-2">
-              <Button variant="secondary" onClick={generate}>Generate</Button>
+              <Button onClick={generate}>Actualiser</Button>
               <Button variant="secondary" onClick={() => { setFrom(""); setTo(""); setPreset("CUSTOM"); }}>
-                Reset
+                Réinitialiser
               </Button>
             </div>
 
             <div className="text-sm text-slate-500 dark:text-slate-400 flex items-center">
-              Posted transactions only.
+              Transactions validées uniquement.
             </div>
           </div>
         </CardBody>
@@ -159,35 +161,35 @@ export default function FinanceReportsPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <Card>
           <CardBody>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Revenue</div>
-            <div className="mt-2 text-2xl font-bold">{money(report.revenue)}</div>
-            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Income total</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">Chiffre d'Affaires</div>
+            <div className="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">{money(report.revenue)}</div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Total des revenus</div>
           </CardBody>
         </Card>
 
         <Card>
           <CardBody>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Expenses</div>
-            <div className="mt-2 text-2xl font-bold">{money(report.expenses)}</div>
-            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Expense total</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">Dépenses</div>
+            <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{money(report.expenses)}</div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Total des charges</div>
           </CardBody>
         </Card>
 
         <Card>
           <CardBody>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Net Profit</div>
-            <div className="mt-2 text-2xl font-bold flex items-center gap-2">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Résultat Net</div>
+            <div className={`mt-2 text-2xl font-bold flex items-center gap-2 ${report.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
               {money(report.net)} {netBadge}
             </div>
-            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Revenue - Expenses</div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Revenus - Dépenses</div>
           </CardBody>
         </Card>
 
         <Card>
           <CardBody>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Cash (simple)</div>
-            <div className="mt-2 text-2xl font-bold">{money(report.cash)}</div>
-            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">PFE simplified model</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">Trésorerie Actuelle</div>
+            <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{money(report.cash)}</div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Disponibilités (Bilan)</div>
           </CardBody>
         </Card>
       </div>
@@ -196,20 +198,20 @@ export default function FinanceReportsPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="lg:col-span-6">
           <Card>
-            <CardHeader title="Profit & Loss (P&L)" subtitle="Revenue - Expenses = Net profit" right={<Button variant="secondary">Export</Button>} />
+            <CardHeader title="Compte de Résultat" subtitle="Synthèse des performances" right={<Button variant="secondary">Exporter</Button>} />
             <CardBody>
-              <Table headers={["Line", "Amount"]}>
+              <Table headers={["Rubrique", "Montant"]}>
                 <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3 font-medium">Revenue</td>
-                  <td className="px-4 py-3">{money(report.revenue)}</td>
+                  <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">Revenus d'exploitation</td>
+                  <td className="px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-400">{money(report.revenue)}</td>
                 </tr>
                 <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3 font-medium">Expenses</td>
-                  <td className="px-4 py-3">{money(report.expenses)}</td>
+                  <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">Charges d'exploitation</td>
+                  <td className="px-4 py-3 font-semibold text-rose-600 dark:text-rose-400">- {money(report.expenses)}</td>
                 </tr>
-                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3 font-medium">Net Profit</td>
-                  <td className="px-4 py-3 font-semibold">{money(report.net)}</td>
+                <tr className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 border-t-2 border-slate-200 dark:border-slate-700">
+                  <td className="px-4 py-3 font-bold text-slate-900 dark:text-white">Résultat Net de l'Exercice</td>
+                  <td className="px-4 py-3 font-bold text-slate-900 dark:text-white">{money(report.net)}</td>
                 </tr>
               </Table>
             </CardBody>
@@ -218,32 +220,32 @@ export default function FinanceReportsPage() {
 
         <div className="lg:col-span-6">
           <Card>
-            <CardHeader title="Revenue / Expenses by Category" subtitle="Top categories for selected period" right={<Button variant="secondary">Export</Button>} />
+            <CardHeader title="Répartition par Catégorie" subtitle="Analyse détaillée des flux" right={<Button variant="secondary">Exporter</Button>} />
             <CardBody>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Revenue
+                    Entrées (Revenus)
                   </div>
                   <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-sm">
                       <thead className="bg-slate-50 text-slate-700 dark:bg-slate-800/50 dark:text-slate-200">
                         <tr>
-                          <th className="px-4 py-3 text-left font-semibold">Category</th>
-                          <th className="px-4 py-3 text-left font-semibold">Amount</th>
+                          <th className="px-4 py-3 text-left font-semibold">Catégorie</th>
+                          <th className="px-4 py-3 text-left font-semibold">Montant</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                         {byCategory.revenueByCat.length ? (
                           byCategory.revenueByCat.map((r) => (
                             <tr key={r.category} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                              <td className="px-4 py-3">{r.category}</td>
+                              <td className="px-4 py-3">{categoryLabel[r.category] || r.category}</td>
                               <td className="px-4 py-3 font-semibold">{money(r.amount)}</td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td className="px-4 py-3 text-slate-500 dark:text-slate-400" colSpan={2}>No revenue lines.</td>
+                            <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-center" colSpan={2}>Aucun revenu.</td>
                           </tr>
                         )}
                       </tbody>
@@ -253,37 +255,33 @@ export default function FinanceReportsPage() {
 
                 <div>
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Expenses
+                    Sorties (Dépenses)
                   </div>
                   <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-sm">
                       <thead className="bg-slate-50 text-slate-700 dark:bg-slate-800/50 dark:text-slate-200">
                         <tr>
-                          <th className="px-4 py-3 text-left font-semibold">Category</th>
-                          <th className="px-4 py-3 text-left font-semibold">Amount</th>
+                          <th className="px-4 py-3 text-left font-semibold">Catégorie</th>
+                          <th className="px-4 py-3 text-left font-semibold">Montant</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                         {byCategory.expenseByCat.length ? (
                           byCategory.expenseByCat.map((r) => (
                             <tr key={r.category} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                              <td className="px-4 py-3">{r.category}</td>
+                              <td className="px-4 py-3">{categoryLabel[r.category] || r.category}</td>
                               <td className="px-4 py-3 font-semibold">{money(r.amount)}</td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td className="px-4 py-3 text-slate-500 dark:text-slate-400" colSpan={2}>No expense lines.</td>
+                            <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-center" colSpan={2}>Aucune dépense.</td>
                           </tr>
                         )}
                       </tbody>
                     </table>
                   </div>
                 </div>
-              </div>
-
-              <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                Category is based on transaction.category (Sales, Suppliers, Transport, Payroll, Other).
               </div>
             </CardBody>
           </Card>
@@ -292,54 +290,60 @@ export default function FinanceReportsPage() {
 
       {/* Balance Sheet */}
       <Card>
-        <CardHeader title="Balance Sheet" subtitle="Assets / Liabilities / Equity (simple PFE model)" right={<Button variant="secondary">Export</Button>} />
+        <CardHeader title="Bilan Comptable (Simplifié)" subtitle="Actif / Passif / Capitaux Propres" right={<Button variant="secondary">Exporter</Button>} />
         <CardBody>
-          <Table headers={["Section", "Amount"]}>
+          <Table headers={["Poste du Bilan", "Montant"]}>
             <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-              <td className="px-4 py-3 font-medium">Assets</td>
-              <td className="px-4 py-3">{money(report.assets)}</td>
+              <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">Total Actif (Trésorerie & Équivalents)</td>
+              <td className="px-4 py-3 font-semibold">{money(report.assets)}</td>
             </tr>
             <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-              <td className="px-4 py-3 font-medium">Liabilities</td>
-              <td className="px-4 py-3">{money(report.liabilities)}</td>
+              <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">Total Passif (Dettes)</td>
+              <td className="px-4 py-3 font-semibold">{money(report.liabilities)}</td>
             </tr>
-            <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-              <td className="px-4 py-3 font-medium">Equity</td>
-              <td className="px-4 py-3">{money(report.equity)}</td>
+            <tr className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 border-t-2 border-slate-200 dark:border-slate-700">
+              <td className="px-4 py-3 font-bold text-slate-900 dark:text-white">Capitaux Propres</td>
+              <td className="px-4 py-3 font-bold text-slate-900 dark:text-white">{money(report.equity)}</td>
             </tr>
           </Table>
 
-          <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-            Simplified PFE scope: assumes only cash position from posted transactions.
-            Later you can add VAT accounts, receivables/payables, inventory valuation, liabilities, etc.
+          <div className="mt-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+            <strong>Note PFE :</strong> Modèle simplifié basé uniquement sur les flux de trésorerie validés. 
+            L'intégration avec les modules d'inventaire (valorisation des stocks) et de facturation (créances/dettes) permettra de générer un bilan complet.
           </div>
         </CardBody>
       </Card>
 
       {/* Ledger */}
       <Card>
-        <CardHeader title="General Ledger" subtitle="Posted transactions for the selected period" right={<Button variant="secondary">Export Ledger</Button>} />
+        <CardHeader title="Grand Livre" subtitle="Détail des écritures comptables pour la période sélectionnée" right={<Button variant="secondary">Exporter Grand Livre</Button>} />
         <CardBody>
-          <Table headers={["Date", "Type", "Category", "Amount", "Reference", "Status"]}>
+          <Table headers={["Date", "Type", "Catégorie", "Montant", "Référence", "Statut"]}>
             {tx.map((t) => (
               <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                <td className="px-4 py-3">{t.date}</td>
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{t.date}</td>
                 <td className="px-4 py-3">
-                  <Badge variant={t.type === "Income" ? "info" : "warning"}>{t.type}</Badge>
+                  <Badge variant={t.type === "Income" ? "success" : "neutral"}>
+                    {t.type === "Income" ? "Revenu" : "Dépense"}
+                  </Badge>
                 </td>
-                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{t.category}</td>
-                <td className="px-4 py-3 font-semibold">{money(t.amount)}</td>
-                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{t.reference ?? "—"}</td>
+                <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-200">
+                  {categoryLabel[t.category] || t.category}
+                </td>
+                <td className={`px-4 py-3 font-semibold ${t.type === 'Income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'}`}>
+                  {t.type === "Income" ? "+" : "-"} {money(t.amount)}
+                </td>
+                <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{t.reference ?? "—"}</td>
                 <td className="px-4 py-3">
-                  <Badge variant="success">{t.status}</Badge>
+                  <Badge variant="success">Validé</Badge>
                 </td>
               </tr>
             ))}
           </Table>
 
           {tx.length === 0 ? (
-            <div className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-              No posted transactions for this period.
+            <div className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400 py-8 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
+              Aucune transaction validée sur cette période.
             </div>
           ) : null}
         </CardBody>

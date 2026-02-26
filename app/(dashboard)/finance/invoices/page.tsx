@@ -350,6 +350,62 @@ export default function FinanceInvoicesPage() {
             <Input type="number" step="0.01" min={0} value={form.retenueRate} onChange={(e) => setForm((s) => ({ ...s, retenueRate: e.target.value }))} />
           </div>
         </div>
+        {/* --- Paste this right below the Retenue input inside the Modal --- */}
+          <div className="md:col-span-2 mt-4 rounded-xl bg-slate-50 p-4 border border-slate-200 dark:bg-slate-800/50 dark:border-slate-700">
+            <h4 className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">Live Summary / Total Calculé</h4>
+            
+            {(() => {
+              // Live calculation based on current form state
+              const ht = (Number(form.lineQty) || 0) * (Number(form.lineUnitPrice) || 0);
+              const fodec = ht * (Number(form.fodecRate) || 0);
+              const tvaBase = ht + fodec;
+              const tva = tvaBase * (Number(form.tvaRate) || 0);
+              const timbre = Number(form.timbre) || 0;
+              const retenue = ht * (Number(form.retenueRate) || 0);
+              const grossTTC = tvaBase + tva + timbre;
+              const netToPay = grossTTC - retenue;
+
+              return (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                    <span>Montant HT:</span>
+                    <span className="font-medium text-slate-900 dark:text-slate-100">{ht.toFixed(3)} {form.currency}</span>
+                  </div>
+                  {(fodec > 0) && (
+                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                      <span>FODEC:</span>
+                      <span>{fodec.toFixed(3)} {form.currency}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                    <span>TVA:</span>
+                    <span>{tva.toFixed(3)} {form.currency}</span>
+                  </div>
+                  {(timbre > 0) && (
+                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                      <span>Timbre Fiscal:</span>
+                      <span>{timbre.toFixed(3)} {form.currency}</span>
+                    </div>
+                  )}
+                  <div className="my-2 border-t border-slate-200 dark:border-slate-700" />
+                  <div className="flex justify-between text-slate-600 dark:text-slate-400 font-medium">
+                    <span>Total TTC:</span>
+                    <span className="text-slate-900 dark:text-slate-100">{grossTTC.toFixed(3)} {form.currency}</span>
+                  </div>
+                  {(retenue > 0) && (
+                    <div className="flex justify-between text-rose-600 dark:text-rose-400">
+                      <span>Retenue à la source (-):</span>
+                      <span>{retenue.toFixed(3)} {form.currency}</span>
+                    </div>
+                  )}
+                  <div className="mt-2 flex justify-between rounded-lg bg-slate-900 p-3 text-white dark:bg-white dark:text-slate-900">
+                    <span className="font-semibold">Net à Payer:</span>
+                    <span className="font-bold">{netToPay.toFixed(3)} {form.currency}</span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
       </Modal>
     </div>
   );

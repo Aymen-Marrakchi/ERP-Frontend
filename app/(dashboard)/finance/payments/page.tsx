@@ -14,19 +14,18 @@ import { Payment, PaymentMethod, ReminderLog, useFinance, financeHelpers } from 
 type TermPreset = "1M" | "3M" | "CUSTOM";
 
 function badgeForSimple(s: string) {
-  if (s === "Overdue") return { variant: "warning" as const, label: "Overdue" };
-  if (s === "Paid") return { variant: "success" as const, label: "Paid" };
-  if (s === "Sent") return { variant: "info" as const, label: "Sent" };
+  if (s === "Overdue") return { variant: "warning" as const, label: "En Retard" };
+  if (s === "Paid") return { variant: "success" as const, label: "Payé" };
+  if (s === "Sent") return { variant: "info" as const, label: "Envoyée" };
   return { variant: "neutral" as const, label: s };
 }
 
 function badgeForMethod(m: PaymentMethod) {
-  if (m === "Cheque") return { variant: "warning" as const, label: "Cheque" };
-  if (m === "Cash") return { variant: "neutral" as const, label: "Cash" };
-  // company wording "kimbyl" → we use "Kimbial"
-  if (m === "Kimbial") return { variant: "info" as const, label: "Kimbial" };
-  if (m === "Bank") return { variant: "info" as const, label: "Bank" };
-  return { variant: "success" as const, label: "Card" };
+  if (m === "Cheque") return { variant: "warning" as const, label: "Chèque" };
+  if (m === "Cash") return { variant: "neutral" as const, label: "Espèces" };
+  if (m === "Kimbial") return { variant: "info" as const, label: "Traite (Kimbial)" };
+  if (m === "Bank") return { variant: "info" as const, label: "Virement" };
+  return { variant: "success" as const, label: "Carte" };
 }
 
 export default function FinancePaymentsPage() {
@@ -52,7 +51,6 @@ export default function FinancePaymentsPage() {
 
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>(state.invoices[0]?.id ?? "");
 
-  // Date filter for payments list
   const [payFrom, setPayFrom] = useState("");
   const [payTo, setPayTo] = useState("");
 
@@ -62,8 +60,6 @@ export default function FinancePaymentsPage() {
     method: "Cheque" as PaymentMethod,
     date: new Date().toISOString().slice(0, 10),
     reference: "",
-
-    // NEW
     termPreset: "1M" as TermPreset,
     customDays: "30",
   });
@@ -81,6 +77,7 @@ export default function FinancePaymentsPage() {
       date: new Date().toISOString().slice(0, 10),
       amount: "0",
       reference: "",
+      method: "Cheque",
       termPreset: "1M",
       customDays: "30",
     }));
@@ -94,11 +91,13 @@ export default function FinancePaymentsPage() {
     const inv = invoiceById[payForm.invoiceId];
     if (!inv) return;
 
-    // If you have invoiceTotals helper with taxes, use due from there
     const totals = financeHelpers.invoiceTotals ? financeHelpers.invoiceTotals(inv) : null;
     const due = totals?.due ?? Math.max(0, financeHelpers.invoiceTotal(inv) - (inv.paidAmount ?? 0));
 
     const applied = Math.min(amt, due); // avoid overpay in UI
+
+    // Only apply terms if the method is delayed (Cheque, Kimbial, Bank)
+    const isDelayed = ["Cheque", "Kimbial", "Bank"].includes(payForm.method);
 
     const p: Payment = {
       id: `pay-${Date.now()}`,
@@ -107,14 +106,11 @@ export default function FinancePaymentsPage() {
       amount: applied,
       method: payForm.method,
       reference: payForm.reference.trim() || undefined,
-
-      // NEW fields (requires Payment type update)
-      termPreset: payForm.termPreset,
-      customTermDays: payForm.termPreset === "CUSTOM" ? Math.max(1, Number(payForm.customDays) || 1) : undefined,
+      termPreset: isDelayed ? payForm.termPreset : undefined,
+      customTermDays: (isDelayed && payForm.termPreset === "CUSTOM") ? Math.max(1, Number(payForm.customDays) || 1) : undefined,
     };
 
     dispatch({ type: "PAYMENT_ADD", payload: p });
-
     setOpenPay(false);
   };
 
@@ -151,32 +147,35 @@ export default function FinancePaymentsPage() {
       });
   }, [state.payments, payFrom, payTo]);
 
+  // Determine if current selected payment method requires a term
+  const requiresTerm = ["Cheque", "Kimbial", "Bank"].includes(payForm.method);
+
   return (
-    <div className="space-y-6">
-      <Topbar title="Payments & Reminders" subtitle="Overdue invoices, payment methods, terms and reminder logs" />
+    <div className="space-y-6 p-6">
+      <Topbar title="Paiements & Relances" subtitle="Gestion des factures impayées, méthodes de paiement et historique des relances" />
 
       <Card>
-        <CardHeader title="Overdue Invoices" subtitle="Record payments and log reminders" right={<Button variant="secondary">Export</Button>} />
+        <CardHeader title="Factures en Retard" subtitle="Enregistrer des paiements ou effectuer des relances" />
         <CardBody>
-          <Table headers={["Invoice", "Customer", "Due Date", "Net Due", "Paid", "Status", "Reminders", "Actions"]}>
+          <Table headers={["Facture", "Client", "Échéance", "Reste à Payer", "Déjà Payé", "Statut", "Relances", "Actions"]}>
             {overdue.map((i) => {
               const totals = financeHelpers.invoiceTotals ? financeHelpers.invoiceTotals(i) : null;
               const due = totals?.due ?? Math.max(0, financeHelpers.invoiceTotal(i) - (i.paidAmount ?? 0));
-
               const st = badgeForSimple(i.status);
+
               return (
                 <tr key={i.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3 font-medium">{i.invoiceNo}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{i.invoiceNo}</td>
                   <td className="px-4 py-3">{i.customerName}</td>
-                  <td className="px-4 py-3">{i.dueDate}</td>
-                  <td className="px-4 py-3 font-semibold">{due.toLocaleString()} {i.currency}</td>
-                  <td className="px-4 py-3">{i.paidAmount.toLocaleString()} {i.currency}</td>
+                  <td className="px-4 py-3 text-rose-600 dark:text-rose-400 font-medium">{i.dueDate}</td>
+                  <td className="px-4 py-3 font-bold">{due.toFixed(3)} {i.currency}</td>
+                  <td className="px-4 py-3 text-slate-500">{i.paidAmount.toFixed(3)} {i.currency}</td>
                   <td className="px-4 py-3"><Badge variant={st.variant}>{st.label}</Badge></td>
-                  <td className="px-4 py-3">{reminderCount(i.id)}</td>
+                  <td className="px-4 py-3 font-medium text-slate-500">{reminderCount(i.id)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
-                      <Button className="py-1.5" onClick={() => openPaymentFor(i.id)}>Record Payment</Button>
-                      <Button variant="secondary" className="py-1.5" onClick={() => openReminderFor(i.id)}>Log Reminder</Button>
+                      <Button className="py-1.5" onClick={() => openPaymentFor(i.id)}>Payer</Button>
+                      <Button variant="secondary" className="py-1.5" onClick={() => openReminderFor(i.id)}>Relancer</Button>
                     </div>
                   </td>
                 </tr>
@@ -185,47 +184,43 @@ export default function FinancePaymentsPage() {
           </Table>
 
           {overdue.length === 0 ? (
-            <div className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-              No overdue invoices right now.
+            <div className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400 py-8 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
+              Aucune facture en retard pour le moment.
             </div>
           ) : null}
         </CardBody>
       </Card>
 
       <Card>
-        <CardHeader title="Recent Payments" subtitle="Filter by payment date (from/to)" />
+        <CardHeader title="Historique des Paiements" subtitle="Filtrer par date d'encaissement" />
         <CardBody>
           <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-4">
             <Input type="date" value={payFrom} onChange={(e) => setPayFrom(e.target.value)} />
             <Input type="date" value={payTo} onChange={(e) => setPayTo(e.target.value)} />
             <div className="md:col-span-2 text-sm text-slate-500 dark:text-slate-400 flex items-center">
-              Payment methods include Cheque, Cash, Kimbial. Terms: 1M, 3M, Custom.
+              Affiche tous les encaissements (Chèque, Traite, Espèces, Virement).
             </div>
           </div>
 
-          <Table headers={["Date", "Invoice", "Customer", "Amount", "Method", "Term", "Reference"]}>
+          <Table headers={["Date", "Facture", "Client", "Montant", "Méthode", "Échéance", "Référence"]}>
             {filteredPayments.map((p) => {
               const inv = invoiceById[p.invoiceId];
               const mb = badgeForMethod(p.method);
 
-              const term =
-                p.termPreset === "CUSTOM"
-                  ? `Custom ${p.customTermDays ?? ""}d`
-                  : p.termPreset === "3M"
-                    ? "3 months"
-                    : p.termPreset === "1M"
-                      ? "1 month"
-                      : "—";
+              const term = p.termPreset === "CUSTOM"
+                ? `Custom ${p.customTermDays ?? ""}j`
+                : p.termPreset === "3M" ? "90 jours"
+                : p.termPreset === "1M" ? "30 jours" : "Immédiat";
 
               return (
                 <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3">{p.date}</td>
-                  <td className="px-4 py-3 font-medium">{inv?.invoiceNo ?? "Unknown"}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{p.date}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{inv?.invoiceNo ?? "Inconnue"}</td>
                   <td className="px-4 py-3">{inv?.customerName ?? "—"}</td>
-                  <td className="px-4 py-3 font-semibold">{p.amount.toLocaleString()} {inv?.currency ?? "TND"}</td>
+                  <td className="px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-400">+ {p.amount.toFixed(3)} {inv?.currency ?? "TND"}</td>
                   <td className="px-4 py-3"><Badge variant={mb.variant}>{mb.label}</Badge></td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{term}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{p.reference ?? "—"}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{term}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{p.reference ?? "—"}</td>
                 </tr>
               );
             })}
@@ -233,11 +228,13 @@ export default function FinancePaymentsPage() {
         </CardBody>
       </Card>
 
+      {/* REMINDER LOG CARD */}
       <Card>
-        <CardHeader title="Reminder Log" subtitle="Traceability of reminder actions (email/phone/WhatsApp)" />
+        <CardHeader title="Journal des Relances" subtitle="Traçabilité des communications (Email, Téléphone, WhatsApp)" />
         <CardBody>
-          <div className="mb-3">
+          <div className="mb-4 max-w-sm">
             <Select value={selectedInvoiceId} onChange={(e) => setSelectedInvoiceId(e.target.value)}>
+              <option value="">-- Sélectionner une facture --</option>
               {state.invoices.map((i) => (
                 <option key={i.id} value={i.id}>
                   {i.invoiceNo} — {i.customerName}
@@ -246,7 +243,7 @@ export default function FinancePaymentsPage() {
             </Select>
           </div>
 
-          <Table headers={["Date", "Invoice", "Channel", "Note"]}>
+          <Table headers={["Date", "Facture", "Canal", "Note"]}>
             {state.reminders
               .filter((r) => r.invoiceId === selectedInvoiceId)
               .sort((a, b) => b.date.localeCompare(a.date))
@@ -255,7 +252,7 @@ export default function FinancePaymentsPage() {
                 return (
                   <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                     <td className="px-4 py-3">{r.date}</td>
-                    <td className="px-4 py-3 font-medium">{inv?.invoiceNo ?? "Unknown"}</td>
+                    <td className="px-4 py-3 font-medium">{inv?.invoiceNo ?? "Inconnue"}</td>
                     <td className="px-4 py-3">{r.channel}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{r.note ?? "—"}</td>
                   </tr>
@@ -268,25 +265,25 @@ export default function FinancePaymentsPage() {
       {/* PAYMENT MODAL */}
       <Modal
         open={openPay}
-        title="Record Payment"
+        title="Enregistrer un Paiement"
         onClose={() => setOpenPay(false)}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setOpenPay(false)}>Cancel</Button>
-            <Button onClick={savePayment}>Save</Button>
+            <Button variant="secondary" onClick={() => setOpenPay(false)}>Annuler</Button>
+            <Button onClick={savePayment}>Confirmer Paiement</Button>
           </>
         }
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Invoice</div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Facture Associée</div>
             <Select value={payForm.invoiceId} onChange={(e) => setPayForm((s) => ({ ...s, invoiceId: e.target.value }))}>
               {state.invoices.map((i) => {
                 const totals = financeHelpers.invoiceTotals ? financeHelpers.invoiceTotals(i) : null;
                 const due = totals?.due ?? Math.max(0, financeHelpers.invoiceTotal(i) - (i.paidAmount ?? 0));
                 return (
                   <option key={i.id} value={i.id}>
-                    {i.invoiceNo} — {i.customerName} (Due {due.toLocaleString()} {i.currency})
+                    {i.invoiceNo} — {i.customerName} (Reste: {due.toFixed(3)} {i.currency})
                   </option>
                 );
               })}
@@ -294,83 +291,83 @@ export default function FinancePaymentsPage() {
           </div>
 
           <div>
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Amount</div>
-            <Input type="number" min={1} value={payForm.amount} onChange={(e) => setPayForm((s) => ({ ...s, amount: e.target.value }))} />
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Montant Reçu</div>
+            <Input type="number" step="0.001" min={0.001} value={payForm.amount} onChange={(e) => setPayForm((s) => ({ ...s, amount: e.target.value }))} />
           </div>
 
           <div>
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Method</div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Méthode</div>
             <Select value={payForm.method} onChange={(e) => setPayForm((s) => ({ ...s, method: e.target.value as any }))}>
-              <option value="Cheque">Cheque</option>
-              <option value="Cash">Cash</option>
-              <option value="Kimbial">Kimbial</option>
-              <option value="Bank">Bank</option>
-              <option value="Card">Card</option>
+              <option value="Cheque">Chèque</option>
+              <option value="Kimbial">Traite (Kimbial)</option>
+              <option value="Bank">Virement</option>
+              <option value="Cash">Espèces</option>
+              <option value="Card">Carte Bancaire</option>
             </Select>
           </div>
 
           <div>
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Payment Date</div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Date du Paiement</div>
             <Input type="date" value={payForm.date} onChange={(e) => setPayForm((s) => ({ ...s, date: e.target.value }))} />
           </div>
 
           <div>
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Reference</div>
-            <Input value={payForm.reference} onChange={(e) => setPayForm((s) => ({ ...s, reference: e.target.value }))} placeholder="TRX-..." />
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Référence (N° Chèque/Traite)</div>
+            <Input value={payForm.reference} onChange={(e) => setPayForm((s) => ({ ...s, reference: e.target.value }))} placeholder="N°..." />
           </div>
 
-          <div className="md:col-span-2">
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Payment Term</div>
-            <Select
-              value={payForm.termPreset}
-              onChange={(e) => {
-                const v = e.target.value as TermPreset;
-                setPayForm((s) => ({
-                  ...s,
-                  termPreset: v,
-                  customDays: v === "CUSTOM" ? s.customDays : v === "1M" ? "30" : "90",
-                }));
-              }}
-            >
-              <option value="1M">1 month</option>
-              <option value="3M">3 months</option>
-              <option value="CUSTOM">Custom</option>
-            </Select>
-          </div>
+          {/* DYNAMIC TERM DISPLAY: Only show if Cheque, Kimbial, or Bank */}
+          {requiresTerm && (
+            <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+              <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Échéance de l'effet</div>
+              <Select
+                value={payForm.termPreset}
+                onChange={(e) => {
+                  const v = e.target.value as TermPreset;
+                  setPayForm((s) => ({
+                    ...s,
+                    termPreset: v,
+                    customDays: v === "CUSTOM" ? s.customDays : v === "1M" ? "30" : "90",
+                  }));
+                }}
+              >
+                <option value="1M">30 Jours</option>
+                <option value="3M">90 Jours</option>
+                <option value="CUSTOM">Personnalisée</option>
+              </Select>
 
-          {payForm.termPreset === "CUSTOM" ? (
-            <div className="md:col-span-2">
-              <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Custom duration (days)</div>
-              <Input
-                type="number"
-                min={1}
-                value={payForm.customDays}
-                onChange={(e) => setPayForm((s) => ({ ...s, customDays: e.target.value }))}
-                placeholder="e.g. 45"
-              />
-              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Use custom duration for payment plans or negotiated terms.
-              </div>
+              {payForm.termPreset === "CUSTOM" && (
+                <div className="mt-3">
+                  <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Durée personnalisée (en jours)</div>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={payForm.customDays}
+                    onChange={(e) => setPayForm((s) => ({ ...s, customDays: e.target.value }))}
+                    placeholder="Ex: 45"
+                  />
+                </div>
+              )}
             </div>
-          ) : null}
+          )}
         </div>
       </Modal>
 
       {/* REMINDER MODAL */}
       <Modal
         open={openReminder}
-        title="Log Reminder"
+        title="Nouvelle Relance"
         onClose={() => setOpenReminder(false)}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setOpenReminder(false)}>Cancel</Button>
-            <Button onClick={saveReminder}>Save</Button>
+            <Button variant="secondary" onClick={() => setOpenReminder(false)}>Annuler</Button>
+            <Button onClick={saveReminder}>Enregistrer</Button>
           </>
         }
       >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="md:col-span-2">
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Invoice</div>
+        <div className="grid grid-cols-1 gap-4">
+          <div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Facture Concernée</div>
             <Select value={remForm.invoiceId} onChange={(e) => setRemForm((s) => ({ ...s, invoiceId: e.target.value }))}>
               {state.invoices.map((i) => (
                 <option key={i.id} value={i.id}>
@@ -380,16 +377,16 @@ export default function FinancePaymentsPage() {
             </Select>
           </div>
           <div>
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Channel</div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Canal de Communication</div>
             <Select value={remForm.channel} onChange={(e) => setRemForm((s) => ({ ...s, channel: e.target.value as any }))}>
               <option value="Email">Email</option>
-              <option value="Phone">Phone</option>
+              <option value="Phone">Téléphone</option>
               <option value="WhatsApp">WhatsApp</option>
             </Select>
           </div>
-          <div className="md:col-span-2">
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Note</div>
-            <Input value={remForm.note} onChange={(e) => setRemForm((s) => ({ ...s, note: e.target.value }))} placeholder="Short note..." />
+          <div>
+            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Notes / Compte Rendu</div>
+            <Input value={remForm.note} onChange={(e) => setRemForm((s) => ({ ...s, note: e.target.value }))} placeholder="Le client promet de payer demain..." />
           </div>
         </div>
       </Modal>
