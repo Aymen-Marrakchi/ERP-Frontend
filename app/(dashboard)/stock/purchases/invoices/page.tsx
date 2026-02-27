@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Table } from "@/components/ui/Table";
 import { Modal } from "@/components/ui/Modal";
 import { useMemo, useState } from "react";
-import type { SupplierInvoice, SupplierInvoiceStatus } from "../types";
+import type { SupplierInvoice, SupplierInvoiceStatus } from "../../store";
 import { supplierInvoiceTotals, threeWayMatch, usePurchases } from "../store";
 
 function badgeForStatus(s: SupplierInvoiceStatus) {
@@ -207,8 +207,8 @@ export default function SupplierInvoicesPage() {
             <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Supplier</div>
             <Select value={form.supplierId} onChange={(e) => setForm((s) => ({ ...s, supplierId: e.target.value }))}>
               {state.suppliers.map((s) => (
-                <option key={s.id} value={s.id} disabled={s.status === "Blocked"}>
-                  {s.name} {s.status === "Blocked" ? "(Blocked)" : ""}
+                <option key={s.id} value={s.id} disabled={s.status === "Blacklisted"}>
+                  {s.name} {s.status === "Blacklisted" ? "(Blacklisted)" : ""}
                 </option>
               ))}
             </Select>
@@ -354,3 +354,5 @@ export default function SupplierInvoicesPage() {
     </div>
   );
 }
+
+

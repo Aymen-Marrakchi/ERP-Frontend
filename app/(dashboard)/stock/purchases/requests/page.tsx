@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Table } from "@/components/ui/Table";
 import { Modal } from "@/components/ui/Modal";
 import { useMemo, useState } from "react";
-import type { PurchaseRequest, PurchaseRequestStatus, PurchasePriority } from "../types";
+import type { PurchaseRequest, PurchaseRequestStatus, PurchasePriority } from "../../store";
 import { usePurchases } from "../store";
 
 function badgeForDaStatus(s: PurchaseRequestStatus) {
@@ -237,3 +237,4 @@ export default function PurchaseRequestsPage() {
     </div>
   );
 }
+

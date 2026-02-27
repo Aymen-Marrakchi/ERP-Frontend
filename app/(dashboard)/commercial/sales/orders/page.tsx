@@ -11,6 +11,15 @@ import { Modal } from "@/components/ui/Modal";
 import { useMemo, useState } from "react";
 import { Order, OrderStatus, OrderLine, useSales } from "../../store";
 
+// Mock customer database for the dropdown
+const MOCK_CUSTOMERS = [
+  "Client X",
+  "Client Y",
+  "Acme Corporation",
+  "Tech Solutions S.A.",
+  "Global Logistics Inc.",
+];
+
 // Tunisian Dinar Formatting (3 decimals)
 function money(n: number) {
   return n.toFixed(3) + " TND";
@@ -77,8 +86,8 @@ export default function SalesOrdersPage() {
 
   const handleOpenCreate = () => {
     setForm({
-      orderNo: `SO-${String(Date.now()).slice(-5)}`,
-      customerName: "",
+      orderNo: `SO-${String(Date.now()).slice(-5)}`, // Auto-generated code
+      customerName: "", // Cleared for the dropdown
       promisedDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
       notes: "",
       lines: [{ id: `l-${Date.now()}`, productRef: "", productName: "", qty: 1, unitPrice: 0 }],
@@ -114,29 +123,35 @@ export default function SalesOrdersPage() {
     setOpenCreate(false);
   };
 
+  // NEW: Wrapper function to dispatch the action and close the modal instantly
+  const handleWorkflowAction = (actionType: string, orderId: string) => {
+    dispatch({ type: actionType as any, payload: { orderId } });
+    setOpenView(false);
+  };
+
   const actionBar = (o: Order) => {
     return (
       <div className="flex flex-wrap gap-2">
         {o.status === "New" && (
-          <Button onClick={() => dispatch({ type: "ORDER_CONFIRM", payload: { orderId: o.id } })}>
+          <Button onClick={() => handleWorkflowAction("ORDER_CONFIRM", o.id)}>
             Confirm
           </Button>
         )}
 
         {o.status === "Confirmed" && (
-          <Button onClick={() => dispatch({ type: "ORDER_RESERVE", payload: { orderId: o.id } })}>
+          <Button onClick={() => handleWorkflowAction("ORDER_RESERVE", o.id)}>
             Reserve Stock
           </Button>
         )}
 
         {o.status === "Reserved" && (
-          <Button onClick={() => dispatch({ type: "ORDER_MARK_PREPARED", payload: { orderId: o.id } })}>
+          <Button onClick={() => handleWorkflowAction("ORDER_MARK_PREPARED", o.id)}>
             Mark Prepared
           </Button>
         )}
 
         {o.status === "Delivered" && (
-          <Button onClick={() => dispatch({ type: "ORDER_CLOSE", payload: { orderId: o.id } })}>
+          <Button onClick={() => handleWorkflowAction("ORDER_CLOSE", o.id)}>
             Close Order
           </Button>
         )}
@@ -301,11 +316,22 @@ export default function SalesOrdersPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Order No</div>
-              <Input value={form.orderNo} onChange={(e) => setForm(s => ({ ...s, orderNo: e.target.value }))} />
+              {/* NEW: Read-only input for auto-generated Order No */}
+              <Input 
+                value={form.orderNo} 
+                readOnly 
+                className="bg-slate-100 text-slate-500 dark:bg-slate-800/50 cursor-not-allowed" 
+              />
             </div>
             <div>
               <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Customer</div>
-              <Input value={form.customerName} onChange={(e) => setForm(s => ({ ...s, customerName: e.target.value }))} placeholder="Company name..." />
+              {/* NEW: Dropdown select for Customers */}
+              <Select value={form.customerName} onChange={(e) => setForm(s => ({ ...s, customerName: e.target.value }))}>
+                <option value="">-- Select Customer --</option>
+                {MOCK_CUSTOMERS.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </Select>
             </div>
             <div>
               <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">SLA (Promised Date)</div>

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Table } from "@/components/ui/Table";
 import { Modal } from "@/components/ui/Modal";
 import { useMemo, useState } from "react";
-import type { SupplierInvoice } from "../types";
+import type { SupplierInvoice } from "../../store";
 import { supplierInvoiceTotals, usePurchases } from "../store";
 
 function today() {
@@ -188,3 +188,4 @@ export default function SupplierPaymentsPage() {
     </div>
   );
 }
+

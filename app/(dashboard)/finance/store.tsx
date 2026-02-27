@@ -77,6 +77,7 @@ type Action =
   | { type: "INVOICE_CREATE"; payload: Invoice }
   | { type: "INVOICE_UPDATE"; payload: Invoice }
   | { type: "INVOICE_SEND"; payload: { invoiceId: string } }
+  | { type: "INVOICE_DELETE"; payload: { id: string } } // NEW ACTION ADDED
   | { type: "PAYMENT_ADD"; payload: Payment }
   | { type: "REMINDER_ADD"; payload: ReminderLog }
   | { type: "TX_ADD"; payload: Transaction };
@@ -179,6 +180,13 @@ function reducer(state: State, action: Action): State {
           const updated = { ...i, status: "Sent" as const };
           return { ...updated, status: computeStatus(updated) };
         }),
+      };
+
+    // NEW CASE ADDED HERE
+    case "INVOICE_DELETE":
+      return {
+        ...state,
+        invoices: state.invoices.filter((i) => i.id !== action.payload.id),
       };
 
     case "PAYMENT_ADD": {

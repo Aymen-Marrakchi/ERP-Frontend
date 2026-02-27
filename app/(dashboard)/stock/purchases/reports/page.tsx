@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Table } from "@/components/ui/Table";
 import { Select } from "@/components/ui/Select";
 import { useMemo, useState } from "react";
-import type { SupplierInvoice } from "../types";
+import type { SupplierInvoice } from "../../store";
 import { usePurchases, poTotals } from "../store";
 
 function invoiceTotals(inv: SupplierInvoice) {
@@ -167,3 +167,4 @@ export default function PurchasesReportsPage() {
     </div>
   );
 }
+
