@@ -7,12 +7,14 @@ export function Modal({
   title,
   onClose,
   children,
+  headerContent,
   footer,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  headerContent?: React.ReactNode;
   footer?: React.ReactNode;
 }) {
   if (!open) return null;
@@ -39,6 +41,7 @@ export function Modal({
             Close
           </button>
         </div>
+        {headerContent ? <div className="shrink-0 px-6">{headerContent}</div> : null}
 
         {/* Body - Added `flex-1` and `overflow-y-auto` 
           This forces the content area to take up available space and scroll if it overflows.
