@@ -54,56 +54,55 @@ export default function PurchaseRequestsPage() {
   // Minimal actions added locally (UI store currently has no DA reducer actions).
   // For now we keep DA in UI list by using local-only approach:
   // If you want DA to persist in store, tell me and I’ll add DA actions in reducer like PO/SINV.
-  const [localRequests, setLocalRequests] = useState<PurchaseRequest[]>(state.requests);
-
-  const filteredLocal = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    return localRequests
-      .filter((da) => {
-        const matchQ = !query || da.daNo.toLowerCase().includes(query) || da.department.toLowerCase().includes(query);
-        const matchS = !status || da.status === status;
-        return matchQ && matchS;
-      })
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [localRequests, q, status]);
+  
+  const requests = useMemo(() => {
+  const query = q.trim().toLowerCase();
+  return state.requests
+    .filter((da) => {
+      const matchQ = !query || da.daNo.toLowerCase().includes(query) || da.department.toLowerCase().includes(query);
+      const matchS = !status || da.status === status;
+      return matchQ && matchS;
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}, [state.requests, q, status]);
 
   const create = () => {
-    if (!form.daNo.trim()) return;
+  if (!form.daNo.trim()) return;
 
-    const da: PurchaseRequest = {
-      id: `da-${Date.now()}`,
-      daNo: form.daNo.trim(),
-      department: form.department,
-      priority: form.priority,
-      status: "Draft",
-      createdAt: form.createdAt,
-      neededDate: form.neededDate,
-      budgetCode: form.budgetCode.trim() || undefined,
-      lines: [
-        {
-          id: `dal-${Date.now()}`,
-          item: form.item.trim(),
-          qty: Number(form.qty) || 1,
-          unit: form.unit.trim() || "pcs",
-          estUnitPrice: Number(form.estUnitPrice) || 0,
-        },
-      ],
-    };
-
-    setLocalRequests((x) => [da, ...x]);
-    setOpen(false);
+  const da: PurchaseRequest = {
+    id: `da-${Date.now()}`,
+    daNo: form.daNo.trim(),
+    department: form.department,
+    priority: form.priority,
+    status: "Draft",
+    createdAt: form.createdAt,
+    neededDate: form.neededDate,
+    budgetCode: form.budgetCode.trim() || undefined,
+    lines: [
+      {
+        id: `dal-${Date.now()}`,
+        item: form.item.trim(),
+        qty: Number(form.qty) || 1,
+        unit: form.unit.trim() || "pcs",
+        estUnitPrice: Number(form.estUnitPrice) || 0,
+      },
+    ],
   };
+
+  dispatch({ type: "REQUEST_ADD", payload: da });
+  setOpen(false);
+};
 
   const setDaStatus = (id: string, next: PurchaseRequestStatus, reason?: string) => {
-    setLocalRequests((list) =>
-      list.map((x) =>
-        x.id === id
-          ? { ...x, status: next, rejectionReason: next === "Rejected" ? reason ?? "Rejected" : undefined }
-          : x
-      )
-    );
-  };
-
+  dispatch({
+    type: "REQUEST_UPDATE_STATUS",
+    payload: {
+      id,
+      status: next,
+      reason,
+    },
+  });
+};
   return (
     <div className="space-y-6">
       <Topbar
@@ -130,7 +129,7 @@ export default function PurchaseRequestsPage() {
           </div>
 
           <Table headers={["DA", "Department", "Priority", "Created", "Needed", "Status", "Actions"]}>
-            {filteredLocal.map((da) => {
+            {requests.map((da) => {
               const st = badgeForDaStatus(da.status);
               return (
                 <tr key={da.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">

@@ -9,41 +9,49 @@ import { Badge } from "@/components/ui/Badge";
 import { Table } from "@/components/ui/Table";
 import { Modal } from "@/components/ui/Modal";
 import { useMemo, useState } from "react";
-import type { GoodsReceipt, ReceiptStatus } from "../../store";
+import { useStock, type GoodsReceipt, type ReceiptStatus } from "../../store";
 import { usePurchases } from "../store";
 
-export default function GoodsReceiptsPage() {
-  const { state, dispatch } = usePurchases();
 
-  const supplierById = useMemo(() => Object.fromEntries(state.suppliers.map((s) => [s.id, s])), [state.suppliers]);
-  const poById = useMemo(() => Object.fromEntries(state.orders.map((o) => [o.id, o])), [state.orders]);
+export default function GoodsReceiptsPage() {
+  const {
+    state: purchasesState,
+    dispatch: dispatchPurchases,
+  } = usePurchases();
+  const {
+    state: stockState,
+    dispatch: dispatchStock,
+  } = useStock();
+
+  const supplierById = useMemo(() => Object.fromEntries(purchasesState.suppliers.map((s) => [s.id, s])), [purchasesState.suppliers]);
+  const poById = useMemo(() => Object.fromEntries(purchasesState.orders.map((o) => [o.id, o])), [purchasesState.orders]);
 
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
 
   // Fallback to first PO if available
   const [form, setForm] = useState({
-    poId: state.orders[0]?.id ?? "",
+    poId: purchasesState.orders[0]?.id ?? "",
     date: new Date().toISOString().slice(0, 10),
     disputeNote: "",
   });
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
-    const receipts = state.receipts || []; // Safe fallback
+    const receipts = purchasesState.receipts || []; // Safe fallback
     return receipts.filter((gr) => {
       const po = poById[gr.poId];
       const sup = supplierById[gr.supplierId];
       const text = `${gr.grNo} ${po?.poNo ?? ""} ${sup?.name ?? ""}`.toLowerCase();
       return !query || text.includes(query);
     });
-  }, [state.receipts, q, poById, supplierById]);
+  }, [purchasesState.receipts, q, poById, supplierById]);
 
   // Local state for the lines in the modal (quantities being received)
   const [draftLines, setDraftLines] = useState<Record<string, { receivedQty: string; quality: "Accepted" | "Rejected"; note: string }>>({});
 
   const openCreate = () => {
-    const po = poById[form.poId] ?? state.orders[0];
+    const po = poById[form.poId] ?? purchasesState.orders[0];
     if (!po) return;
 
     // Initialize lines with ordered quantities
@@ -85,11 +93,37 @@ export default function GoodsReceiptsPage() {
       })),
     };
 
-    dispatch({ type: "GR_CREATE", payload: gr });
+    dispatchPurchases({ type: "GR_CREATE", payload: gr });
     setOpen(false);
   };
 
-  const validate = (grId: string) => dispatch({ type: "GR_VALIDATE", payload: { grId } });
+  const validate = (grId: string) => {
+  const gr = purchasesState.receipts.find((r) => r.id === grId);
+  if (gr) {
+    // update purchases receipt status and PO status
+    dispatchPurchases({ type: "GR_VALIDATE", payload: { grId } });
+    // update stock quantities
+    gr.lines.forEach((line) => {
+      const product = stockState.products.find(
+        (p) => p.name === line.item
+      );
+      if (product) {
+        dispatchStock({
+          type: "MOVEMENT_ADD",
+          payload: {
+            id: `m-${Date.now()}-${line.id}`,
+            date: gr.date,
+            type: "IN",
+            productId: product.id,
+            qty: line.receivedQty,
+            source: "Purchase",
+            refDoc: gr.grNo,
+          },
+        });
+      }
+    });
+  }
+};
 
   return (
     <div className="space-y-6">
@@ -105,7 +139,7 @@ export default function GoodsReceiptsPage() {
           <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search GR / PO / Supplier..." />
             <Select value={form.poId} onChange={(e) => setForm((s) => ({ ...s, poId: e.target.value }))}>
-              {state.orders.map((o) => (
+              {purchasesState.orders.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.poNo} — {supplierById[o.supplierId]?.name ?? "Unknown"} ({o.status})
                 </option>

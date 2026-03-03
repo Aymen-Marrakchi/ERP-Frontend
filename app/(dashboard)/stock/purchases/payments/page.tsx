@@ -38,29 +38,39 @@ export default function SupplierPaymentsPage() {
     const query = q.trim().toLowerCase();
 
     const rows = state.invoices
-      .filter((inv) => inv.status === "Posted" || inv.status === "Approved" || inv.status === "Submitted")
-      .map((inv) => {
-        const totals = supplierInvoiceTotals(inv);
-        const due = Math.max(0, totals.ttc - inv.totalPaid);
-        const overdue = inv.dueDate < t && due > 0;
-        const dueSoon = !overdue && inv.dueDate <= t; // simple
-        return { inv, totals, due, overdue, dueSoon };
-      })
-      .filter(({ inv }) => {
-        const sup = supplierById[inv.supplierId]?.name ?? "";
-        const text = `${inv.invNo} ${sup}`.toLowerCase();
-        return !query || text.includes(query);
-      })
-      .filter((r) => {
-        if (!filter) return true;
-        if (filter === "Overdue") return r.overdue;
-        if (filter === "DueSoon") return r.due > 0 && !r.overdue;
-        return true;
-      })
-      .sort((a, b) => a.inv.dueDate.localeCompare(b.inv.dueDate));
+  .filter((inv) =>
+    ["Posted", "Approved", "Submitted"].includes(inv.status)
+  )
+  .map((inv) => {
+    const totals = supplierInvoiceTotals(inv);
+    const due = Math.max(0, totals.ttc - inv.totalPaid);
+    const overdue = inv.dueDate < t && due > 0;
+    const dueSoon = !overdue && inv.dueDate <= t && due > 0; // due today and not yet overdue
+    return { inv, totals, due, overdue, dueSoon };
+  })
+  .filter(({ inv }) => {
+    const sup = supplierById[inv.supplierId]?.name ?? "";
+    const text = `${inv.invNo} ${sup}`.toLowerCase();
+    return !query || text.includes(query);
+  })
+  .filter((r) => {
+    if (!filter) return true;
+    if (filter === "Overdue") return r.overdue;
+    if (filter === "DueSoon") return r.dueSoon;
+    return true;
+  })
+  .sort((a, b) => a.inv.dueDate.localeCompare(b.inv.dueDate));
 
     return rows;
   }, [state.invoices, supplierById, q, filter]);
+  const alert = (r: any) => {
+  return r.overdue ? (
+    <Badge variant="danger">Overdue</Badge>
+  ) : r.dueSoon ? (
+    <Badge variant="warning">Due</Badge>
+  ) : (
+    <Badge variant="success">Paid</Badge>
+  );};
 
   const openPay = (inv: SupplierInvoice) => {
     const totals = supplierInvoiceTotals(inv);
@@ -77,12 +87,12 @@ export default function SupplierPaymentsPage() {
   };
 
   const savePayment = () => {
-    const amt = Number(payForm.amount);
-    if (!payForm.invId || !amt || amt <= 0) return;
+  const amt = Number(payForm.amount);
+  if (!payForm.invId || amt <= 0) return;
 
-    dispatch({ type: "SINV_ADD_PAYMENT", payload: { invId: payForm.invId, amount: amt } });
-    setOpen(false);
-  };
+  dispatch({ type: "SINV_ADD_PAYMENT", payload: { invId: payForm.invId, amount: amt } });
+  setOpen(false);
+};
 
   return (
     <div className="space-y-6">
@@ -104,28 +114,36 @@ export default function SupplierPaymentsPage() {
           </div>
 
           <Table headers={["Invoice", "Supplier", "Due Date", "Total", "Paid", "Due", "Alert", "Action"]}>
-            {schedule.map(({ inv, totals, due, overdue }) => {
-              const sup = supplierById[inv.supplierId];
-              const alert = overdue ? <Badge variant="danger">Overdue</Badge> : due > 0 ? <Badge variant="warning">Due</Badge> : <Badge variant="success">Paid</Badge>;
+  {schedule.map(({ inv, totals, due, overdue, dueSoon }) => {
+    const sup = supplierById[inv.supplierId];
+    const alertBadge = overdue
+      ? <Badge variant="danger">Overdue</Badge>
+      : dueSoon
+        ? <Badge variant="warning">Due</Badge>
+        : <Badge variant="success">Paid</Badge>;
 
-              return (
-                <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3 font-medium">{inv.invNo}</td>
-                  <td className="px-4 py-3">{sup?.name ?? "Unknown"}</td>
-                  <td className="px-4 py-3">{inv.dueDate}</td>
-                  <td className="px-4 py-3">{totals.ttc.toLocaleString()} {inv.currency}</td>
-                  <td className="px-4 py-3">{inv.totalPaid.toLocaleString()} {inv.currency}</td>
-                  <td className="px-4 py-3">{due.toLocaleString()} {inv.currency}</td>
-                  <td className="px-4 py-3">{alert}</td>
-                  <td className="px-4 py-3">
-                    <Button className="py-1.5" onClick={() => openPay(inv)} disabled={due <= 0}>
-                      Record Payment
-                    </Button>
-                  </td>
-                </tr>
-              );
-            })}
-          </Table>
+    return (
+      <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+        <td className="px-4 py-3 font-medium">{inv.invNo}</td>
+        <td className="px-4 py-3">{sup?.name ?? "Unknown"}</td>
+        <td className="px-4 py-3">{inv.dueDate}</td>
+        <td className="px-4 py-3">{totals.ttc.toLocaleString()} {inv.currency}</td>
+        <td className="px-4 py-3">{inv.totalPaid.toLocaleString()} {inv.currency}</td>
+        <td className="px-4 py-3">{due.toLocaleString()} {inv.currency}</td>
+        <td className="px-4 py-3">{alertBadge}</td>
+        <td className="px-4 py-3">
+          {due > 0 ? (
+            <Button className="py-1.5" onClick={() => openPay(inv)}>
+              Record Payment
+            </Button>
+          ) : (
+            <span className="text-sm text-slate-500 dark:text-slate-400">Paid in full</span>
+          )}
+        </td>
+      </tr>
+    );
+  })}
+</Table>
 
           {schedule.length === 0 ? (
             <div className="mt-4 text-sm text-slate-500 dark:text-slate-400">No invoices in this filter.</div>

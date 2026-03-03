@@ -33,6 +33,7 @@ export default function StockMovementsPage() {
     qty: "1",
     source: "Purchase" as Movement["source"],
     refDoc: "",
+    lot: "",
   });
 
   const productsById = useMemo(() => {
@@ -80,6 +81,7 @@ export default function StockMovementsPage() {
       productId: form.productId,
       qty: Math.abs(qtyNum),
       source: form.source,
+      lot: form.lot.trim() || undefined,
       refDoc: form.refDoc.trim() || undefined,
     };
 
@@ -114,7 +116,7 @@ export default function StockMovementsPage() {
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
 
-          <Table headers={["Date", "Type", "Product", "Qty", "Source", "Reference"]}>
+          <Table headers={["Date", "Type", "Product", "Qty","Lot", "Source", "Reference"]}>
             {filtered.map((m) => {
               const product = productsById[m.productId];
               const badge = badgeForType(m.type);
@@ -129,6 +131,9 @@ export default function StockMovementsPage() {
                     <div className="text-xs text-slate-500 dark:text-slate-400">{product?.reference}</div>
                   </td>
                   <td className="px-4 py-3">{m.type === "OUT" ? `-${m.qty}` : `+${m.qty}`}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+  {m.lot ?? "—"}
+</td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{m.source}</td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{m.refDoc ?? "—"}</td>
                 </tr>
@@ -193,6 +198,16 @@ export default function StockMovementsPage() {
               <option value="Manual">Manual</option>
             </Select>
           </div>
+          <div>
+  <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+    Lot / Batch (optional)
+  </div>
+  <Input
+    value={form.lot}
+    onChange={(e) => setForm((s) => ({ ...s, lot: e.target.value }))}
+    placeholder="Batch number, e.g. LOT202403"
+  />
+</div>
 
           <div className="md:col-span-2">
             <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Reference Document (optional)</div>

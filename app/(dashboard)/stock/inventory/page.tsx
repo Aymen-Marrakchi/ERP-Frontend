@@ -178,40 +178,45 @@ export default function StockInventoryPage() {
                   </div>
                 </div>
 
-                <Table headers={["Product", "Expected", "Counted", "Difference"]}>
+                <Table headers={["Product", "On Hand", "Reserved", "Available", "Counted", "Difference"]}>
                   {selected.lines.map((l) => {
-                    const p = productsById[l.productId];
-                    const diff = l.counted - l.expected;
-                    const diffCls =
-                      diff === 0
-                        ? "text-slate-600 dark:text-slate-300"
-                        : diff > 0
-                        ? "text-emerald-600"
-                        : "text-rose-600";
+  const p = productsById[l.productId];
+  const onHand = p?.qty ?? 0;
+  const reserved = p?.reserved ?? 0;
+  const available = onHand - reserved;
+  const diff = l.counted - onHand;
+  const diffCls =
+    diff === 0
+      ? "text-slate-600 dark:text-slate-300"
+      : diff > 0
+      ? "text-emerald-600"
+      : "text-rose-600";
 
-                    return (
-                      <tr key={l.productId} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                        <td className="px-4 py-3">
-                          <div className="font-medium">{p?.name ?? "Unknown"}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">{p?.reference}</div>
-                        </td>
-                        <td className="px-4 py-3">{l.expected}</td>
-                        <td className="px-4 py-3">
-                          <Input
-                            type="number"
-                            min={0}
-                            value={String(l.counted)}
-                            disabled={selected.status === "Validated"}
-                            onChange={(e) => updateCounted(l.productId, Number(e.target.value))}
-                            className="max-w-[140px]"
-                          />
-                        </td>
-                        <td className={`px-4 py-3 font-semibold ${diffCls}`}>
-                          {diff > 0 ? `+${diff}` : `${diff}`}
-                        </td>
-                      </tr>
-                    );
-                  })}
+  return (
+    <tr key={l.productId} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+      <td className="px-4 py-3">
+        <div className="font-medium">{p?.name ?? "Unknown"}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">{p?.reference}</div>
+      </td>
+      <td className="px-4 py-3">{onHand}</td>
+      <td className="px-4 py-3">{reserved}</td>
+      <td className="px-4 py-3">{available}</td>
+      <td className="px-4 py-3">
+        <Input
+          type="number"
+          min={0}
+          value={String(l.counted)}
+          disabled={selected.status === "Validated"}
+          onChange={(e) => updateCounted(l.productId, Number(e.target.value))}
+          className="max-w-[140px]"
+        />
+      </td>
+      <td className={`px-4 py-3 font-semibold ${diffCls}`}>
+        {diff > 0 ? `+${diff}` : `${diff}`}
+      </td>
+    </tr>
+  );
+})}
                 </Table>
 
                 <div className="mt-4 text-xs text-slate-500 dark:text-slate-400">

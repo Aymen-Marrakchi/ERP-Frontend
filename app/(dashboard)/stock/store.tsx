@@ -9,6 +9,7 @@ export type Product = {
   name: string;
   category: string;
   qty: number;
+  reserved?: number;
   min: number;
   unit?: string;
 };
@@ -16,9 +17,11 @@ export type Product = {
 export type MovementType = "IN" | "OUT" | "ADJUSTMENT";
 export type Movement = {
   id: string;
-  date: string;
+  date: string;                 // movement date
   type: MovementType;
   productId: string;
+  /** Optional batch/lot identifier for traceability */
+  lot?: string;
   qty: number;
   source: "Purchase" | "Sale" | "Inventory" | "Manual";
   refDoc?: string;
@@ -196,7 +199,7 @@ type Action =
 
 const initial: State = {
   products: [
-    { id: "p1", reference: "SKU-001", name: "Product A", category: "Finished Goods", qty: 45, min: 10, unit: "pcs" },
+    { id: "p1", reference: "SKU-001", name: "Product A", category: "Finished Goods", qty: 45,reserved: 0, min: 10, unit: "pcs" },
   ],
   movements: [],
   inventories: [],

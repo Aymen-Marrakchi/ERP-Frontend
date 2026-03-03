@@ -137,6 +137,7 @@ export default function PurchaseOrdersPage() {
               <option value="Draft">Draft</option>
               <option value="Validated">Validated</option>
               <option value="Sent">Sent</option>
+              <option value="Partially Received">Partially Received</option>
               <option value="Received">Received</option>
               <option value="Closed">Closed</option>
             </Select>
@@ -167,16 +168,49 @@ export default function PurchaseOrdersPage() {
                       </Button>
 
                       {po.status === "Draft" && (
-                        <Button className="py-1.5" onClick={() => setPoStatus(po.id, "Validated")}>Validate</Button>
-                      )}
+  <Button
+    className="py-1.5"
+    onClick={() => setPoStatus(po.id, "Validated")}
+  >
+    Validate
+  </Button>
+)}
 
-                      {po.status === "Validated" && (
-                        <Button className="py-1.5" onClick={() => setPoStatus(po.id, "Sent")}>Send</Button>
-                      )}
+{po.status === "Validated" && (
+  <Button
+    className="py-1.5"
+    onClick={() => setPoStatus(po.id, "Sent")}
+  >
+    Send
+  </Button>
+)}
 
-                      {po.status === "Received" && (
-                        <Button className="py-1.5" onClick={() => setPoStatus(po.id, "Closed")}>Close</Button>
-                      )}
+{po.status === "Sent" && (
+  <Button
+    className="py-1.5"
+    onClick={() => setPoStatus(po.id, "Partially Received")}
+  >
+    Receive (Partial)
+  </Button>
+)}
+
+{po.status === "Partially Received" && (
+  <Button
+    className="py-1.5"
+    onClick={() => setPoStatus(po.id, "Received")}
+  >
+    Receive (Full)
+  </Button>
+)}
+
+{po.status === "Received" && (
+  <Button
+    className="py-1.5"
+    onClick={() => setPoStatus(po.id, "Closed")}
+  >
+    Close
+  </Button>
+)}
                     </div>
                   </td>
                 </tr>

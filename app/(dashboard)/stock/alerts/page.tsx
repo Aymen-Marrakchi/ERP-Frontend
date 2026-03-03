@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Table } from "@/components/ui/Table";
 import { Modal } from "@/components/ui/Modal";
 import { useMemo, useState } from "react";
-import { Movement, useStock } from "../store";
+import { Movement, PurchasePriority, PurchaseRequest, PurchaseRequestLine, useStock } from "../store";
 
 type AlertType = "Low Stock" | "Out of Stock";
 
@@ -25,8 +25,18 @@ export default function StockAlertsPage() {
   const [q, setQ] = useState("");
   const [type, setType] = useState<"" | AlertType>("");
 
-  const [open, setOpen] = useState(false);
-  const [restock, setRestock] = useState<{ productId: string; qty: string }>({ productId: "", qty: "10" });
+  const [openReq, setOpenReq] = useState(false);
+const [reqForm, setReqForm] = useState<{
+  productId: string;
+  qty: string;
+  priority: PurchasePriority;
+  neededDate: string;
+}>({
+  productId: "",
+  qty: "10",
+  priority: "Urgent",
+  neededDate: new Date().toISOString().slice(0, 10),
+});
 
   const alerts = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -49,28 +59,45 @@ export default function StockAlertsPage() {
       }));
   }, [state.products, q, type]);
 
-  const openRestock = (productId: string, suggested: number) => {
-    setRestock({ productId, qty: String(Math.max(1, suggested)) });
-    setOpen(true);
+  const openRequest = (productId: string, suggested: number) => {
+  setReqForm({
+    productId,
+    qty: String(Math.max(1, suggested)),
+    priority: "Urgent",
+    neededDate: new Date().toISOString().slice(0, 10),
+  });
+  setOpenReq(true);
+};
+
+  const saveRequest = () => {
+  const qtyNum = Number(reqForm.qty);
+  if (!reqForm.productId || !qtyNum || qtyNum <= 0) return;
+
+  const product = state.products.find((pr) => pr.id === reqForm.productId);
+  if (!product) return;
+
+  const line: PurchaseRequestLine = {
+    id: `line-${Date.now()}`,
+    item: product.name,
+    qty: qtyNum,
+    unit: product.unit ?? "",
+    estUnitPrice: 0, // optional estimate; adjust as needed
   };
 
-  const saveRestock = () => {
-    const qtyNum = Number(restock.qty);
-    if (!restock.productId || !qtyNum || qtyNum <= 0) return;
-
-    const mv: Movement = {
-      id: `m-${Date.now()}`,
-      date: new Date().toISOString().slice(0, 10),
-      type: "IN",
-      productId: restock.productId,
-      qty: Math.abs(qtyNum),
-      source: "Purchase",
-      refDoc: "Restock",
-    };
-
-    dispatch({ type: "MOVEMENT_ADD", payload: mv });
-    setOpen(false);
+  const request: PurchaseRequest = {
+    id: `DA-${Date.now()}`,
+    daNo: `DA-${String(Date.now()).slice(-4)}`,
+    department: "Stock",
+    priority: reqForm.priority,
+    status: "Submitted",         // you can choose "Draft" or "Submitted"
+    createdAt: new Date().toISOString().slice(0, 10),
+    neededDate: reqForm.neededDate,
+    lines: [line],
   };
+
+  dispatch({ type: "REQUEST_ADD", payload: request });
+  setOpenReq(false);
+};
 
   return (
     <div className="space-y-6">
@@ -111,10 +138,10 @@ export default function StockAlertsPage() {
                 </td>
                 <td className="px-4 py-3">{suggested}</td>
                 <td className="px-4 py-3">
-                  <Button className="py-1.5" onClick={() => openRestock(p.id, suggested)}>
-                    Create Restock
-                  </Button>
-                </td>
+  <Button className="py-1.5" onClick={() => openRequest(p.id, suggested)}>
+    Create Purchase Request
+  </Button>
+</td>
               </tr>
             ))}
           </Table>
@@ -128,44 +155,65 @@ export default function StockAlertsPage() {
       </Card>
 
       <Modal
-        open={open}
-        title="Create Restock Movement"
-        onClose={() => setOpen(false)}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={saveRestock}>Save</Button>
-          </>
-        }
+  open={openReq}
+  title="Create Purchase Request"
+  onClose={() => setOpenReq(false)}
+  footer={
+    <>
+      <Button variant="secondary" onClick={() => setOpenReq(false)}>Cancel</Button>
+      <Button onClick={saveRequest}>Save</Button>
+    </>
+  }
+>
+  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <div className="md:col-span-2">
+      <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Product</div>
+      <Select value={reqForm.productId} onChange={(e) => setReqForm((s) => ({ ...s, productId: e.target.value }))}>
+        <option value="">Select…</option>
+        {state.products.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.reference} - {p.name} (Qty: {p.qty}, Min: {p.min})
+          </option>
+        ))}
+      </Select>
+    </div>
+
+    <div>
+      <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Quantity</div>
+      <Input
+        type="number"
+        min={1}
+        value={reqForm.qty}
+        onChange={(e) => setReqForm((s) => ({ ...s, qty: e.target.value }))}
+      />
+    </div>
+
+    <div>
+      <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Priority</div>
+      <Select
+        value={reqForm.priority}
+        onChange={(e) => setReqForm((s) => ({ ...s, priority: e.target.value as PurchasePriority }))}
       >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="md:col-span-2">
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Product</div>
-            <Select value={restock.productId} onChange={(e) => setRestock((s) => ({ ...s, productId: e.target.value }))}>
-              <option value="">Select...</option>
-              {state.products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.reference} - {p.name} (Qty: {p.qty}, Min: {p.min})
-                </option>
-              ))}
-            </Select>
-          </div>
+        <option value="Urgent">Urgent</option>
+        <option value="Normal">Normal</option>
+        <option value="Low">Low</option>
+      </Select>
+    </div>
 
-          <div>
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Quantity</div>
-            <Input type="number" min={1} value={restock.qty} onChange={(e) => setRestock((s) => ({ ...s, qty: e.target.value }))} />
-          </div>
+    <div>
+      <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Needed by</div>
+      <Input
+        type="date"
+        value={reqForm.neededDate}
+        onChange={(e) => setReqForm((s) => ({ ...s, neededDate: e.target.value }))}
+      />
+    </div>
 
-          <div>
-            <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Date</div>
-            <Input type="date" value={new Date().toISOString().slice(0, 10)} disabled />
-          </div>
-
-          <div className="md:col-span-2 text-xs text-slate-500 dark:text-slate-400">
-            This will create an IN movement with source "Purchase” and update product quantity immediately.
-          </div>
-        </div>
-      </Modal>
+    <div className="md:col-span-2 text-xs text-slate-500 dark:text-slate-400">
+      This will create a purchase request for the selected product and quantity. You can later add more lines or send it for approval.
+    </div>
+  </div>
+</Modal>
     </div>
   );
 }

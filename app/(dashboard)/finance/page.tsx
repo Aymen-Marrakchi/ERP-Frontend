@@ -1,6 +1,9 @@
 "use client";
 
 import React from "react";
+import { useLanguage } from "@/app/context/LanguageContext";
+import { t } from "@/app/lib/i18n"; // translation helper
+
 import Link from "next/link";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Table } from "@/components/ui/Table";
@@ -49,6 +52,7 @@ export default function FinanceDashboardPage() {
   const lastMonthExp = monthlyData[monthlyData.length - 2].expenses;
   const expenseTrend = ((currentMonthExp - lastMonthExp) / lastMonthExp) * 100;
   const isExpenseUp = expenseTrend > 0;
+  const { lang, toggle } = useLanguage();
 
   return (
     <div className="space-y-6 p-6">

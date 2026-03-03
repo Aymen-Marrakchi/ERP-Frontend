@@ -9,6 +9,7 @@ type PurchasesState = {
   receipts: GoodsReceipt[];
   requests: PurchaseRequest[];
   invoices: SupplierInvoice[];
+  returns: SupplierReturn[];
 };
 
 type Action =
@@ -24,7 +25,10 @@ type Action =
   | { type: "GR_VALIDATE"; payload: { grId: string } }
   | { type: "SINV_CREATE"; payload: SupplierInvoice }
   | { type: "SINV_SET_STATUS"; payload: { invId: string; status: SupplierInvoiceStatus; rejectionReason?: string } }
-  | { type: "SINV_ADD_PAYMENT"; payload: { invId: string; amount: number } };
+  | { type: "SINV_ADD_PAYMENT"; payload: { invId: string; amount: number } }
+  | { type: "RETURN_ADD"; payload: SupplierReturn } 
+  | { type: "RETURN_SET_STATUS"; payload: { id: string; status: SupplierReturnStatus; rejectionReason?: string } };
+
 
 const initial: PurchasesState = {
   suppliers: [
@@ -60,6 +64,7 @@ const initial: PurchasesState = {
   receipts: [],
   requests: [],
   invoices: [],
+  returns: [],
 };
 
 function reducer(state: PurchasesState, action: Action): PurchasesState {
@@ -170,6 +175,32 @@ export function usePurchases() {
   if (!ctx) throw new Error("usePurchases must be used inside PurchasesProvider");
   return ctx;
 }
+export type SupplierReturnStatus =
+  | "Draft"
+  | "Submitted"
+  | "Approved"
+  | "Rejected"
+  | "Completed";
+
+export type SupplierReturnLine = {
+  id: string;
+  poLineId: string;
+  item: string;
+  returnedQty: number;
+  reason: string;
+  note?: string;
+};
+
+export type SupplierReturn = {
+  id: string;
+  returnNo: string;
+  supplierId: string;
+  poId: string;
+  status: SupplierReturnStatus;
+  createdAt: string;
+  lines: SupplierReturnLine[];
+  rejectionReason?: string;
+};
 
 export function supplierInvoiceTotals(inv: SupplierInvoice) {
   const ht = inv.lines.reduce((a, l) => a + l.qty * l.unitPriceHT, 0);
