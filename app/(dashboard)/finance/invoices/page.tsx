@@ -58,6 +58,48 @@ function getNextInvoiceNo(invoices: Invoice[]) {
   return `INV-${max + 1}`;
 }
 
+// --- CALENDAR HELPERS ---
+
+// 1. Get stats for a specific DAY
+function getDailyStats(invoices: Invoice[], date: string) {
+  const dailyInvoices = invoices.filter(i => i.issueDate === date && i.status !== "Draft");
+  
+  let income = 0;
+  let outcome = 0;
+  
+  dailyInvoices.forEach(i => {
+    const totals = financeHelpers.invoiceTotals ? financeHelpers.invoiceTotals(i) : financeHelpers.invoiceTotal(i);
+    const amount = typeof totals === 'number' ? totals : totals.gross;
+    
+    if (i.type === "IN") income += amount;
+    else if (i.type === "OUT") outcome += amount;
+  });
+
+  const net = income - outcome;
+  return { income, outcome, net, count: dailyInvoices.length };
+}
+
+// 2. Get stats for the entire MONTH (New Feature)
+function getMonthlyStats(invoices: Invoice[], year: number, month: number) {
+  const monthlyInvoices = invoices.filter(i => {
+    if (i.status === "Draft") return false;
+    const d = new Date(i.issueDate);
+    return d.getFullYear() === year && d.getMonth() === month;
+  });
+
+  let income = 0;
+  let outcome = 0;
+
+  monthlyInvoices.forEach(i => {
+    const totals = financeHelpers.invoiceTotals ? financeHelpers.invoiceTotals(i) : financeHelpers.invoiceTotal(i);
+    const amount = typeof totals === 'number' ? totals : totals.gross;
+    if (i.type === "IN") income += amount;
+    else if (i.type === "OUT") outcome += amount;
+  });
+
+  return { income, outcome, net: income - outcome, count: monthlyInvoices.length };
+}
+
 export default function FinanceInvoicesPage() {
   const { state, dispatch } = useFinance();
 
@@ -68,9 +110,13 @@ export default function FinanceInvoicesPage() {
   const [to, setTo] = useState("");
 
   const [open, setOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"invoice" | "settings">("invoice");
   const [editing, setEditing] = useState<Invoice | null>(null);
   const [isViewMode, setIsViewMode] = useState(false);
+
+  // Calendar Navigation State
+  const [calDate, setCalDate] = useState(new Date());
 
   const [form, setForm] = useState({
     invoiceNo: "",
@@ -83,7 +129,7 @@ export default function FinanceInvoicesPage() {
     paymentMethod: "Virement",
     lineLabel: "",
     lineQty: "1",
-    lineUnitPrice: "0", // Stores HT
+    lineUnitPrice: "0",
     applyTva: true,
     tvaRate: "0.19",
     applyFodec: false,
@@ -149,7 +195,7 @@ export default function FinanceInvoicesPage() {
       issueDate: inv.issueDate,
       dueDate: inv.dueDate,
       currency: inv.currency,
-      paymentMethod: (inv as any).paymentMethod || "Virement", // Load saved method
+      paymentMethod: (inv as any).paymentMethod || "Virement",
       lineLabel: first?.label ?? "",
       lineQty: String(first?.qty ?? 1),
       lineUnitPrice: String(first?.unitPrice ?? 0),
@@ -191,11 +237,8 @@ export default function FinanceInvoicesPage() {
   const buildInvoice = (): Invoice | null => {
     if (!form.invoiceNo.trim() || !form.customerName.trim()) return null;
     
-    // Get Rates
     const tvaVal = form.applyTva ? Number(form.tvaRate) || 0 : 0;
     const fodecVal = form.applyFodec ? Number(form.fodecRate) || 0 : 0;
-    
-    // Store Unit Price as HT (Standard)
     const unitHT = Number(form.lineUnitPrice) || 0;
 
     return {
@@ -207,7 +250,6 @@ export default function FinanceInvoicesPage() {
       dueDate: form.dueDate,
       status: editing?.status ?? "Draft",
       currency: form.currency,
-      // Save payment method (Cast as any if strict typing complains, ideally add to store type)
       ...({ paymentMethod: form.paymentMethod } as any),
       lines: [
         {
@@ -255,12 +297,37 @@ export default function FinanceInvoicesPage() {
 
   const availableEntities = MOCK_ENTITIES.filter(e => e.type === form.type);
 
+  // --- CALENDAR RENDER LOGIC ---
+  const calendarDays = useMemo(() => {
+    const year = calDate.getFullYear();
+    const month = calDate.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0 = Sunday
+    
+    const days = [];
+    for (let i = 0; i < firstDayOfWeek; i++) days.push(null);
+    for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
+    return days;
+  }, [calDate]);
+
+  // Calculate stats for the *currently viewed* month
+  const monthStats = useMemo(() => {
+    return getMonthlyStats(state.invoices, calDate.getFullYear(), calDate.getMonth());
+  }, [state.invoices, calDate]);
+
   return (
     <div className="space-y-6 p-6">
       <Topbar
         title="Invoices & Billing"
         subtitle="Manage customer invoices and supplier bills"
-        right={<Button onClick={openCreate}>+ Create Invoice</Button>}
+        right={
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setCalendarOpen(true)}>
+              📅 Invoice Time
+            </Button>
+            <Button onClick={openCreate}>+ Create Invoice</Button>
+          </div>
+        }
       />
 
       <Card>
@@ -284,7 +351,6 @@ export default function FinanceInvoicesPage() {
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
 
-          {/* UPDATED TABLE HEADERS: Added "Method" */}
           <Table headers={["Type", "Invoice No", "Entity", "Total TTC", "Method", "Status", "Actions"]}>
             {filtered.map((i) => {
               const totals = financeHelpers.invoiceTotals ? financeHelpers.invoiceTotals(i) : financeHelpers.invoiceTotal(i);
@@ -293,7 +359,6 @@ export default function FinanceInvoicesPage() {
               const tp = badgeForInvoiceType(i.type ?? "IN");
               const isDraft = i.status === "Draft";
               
-              // Retrieve payment method safely
               const paymentMethod = (i as any).paymentMethod || "-";
 
               return (
@@ -302,10 +367,7 @@ export default function FinanceInvoicesPage() {
                   <td className="px-4 py-3 font-medium">{i.invoiceNo}</td>
                   <td className="px-4 py-3">{i.customerName}</td>
                   <td className="px-4 py-3 font-semibold">{gross.toFixed(3)} {i.currency}</td>
-                  
-                  {/* NEW COLUMN: Payment Method */}
                   <td className="px-4 py-3 text-sm text-slate-500">{paymentMethod}</td>
-                  
                   <td className="px-4 py-3"><Badge variant={st.variant}>{st.label}</Badge></td>
                   <td className="px-4 py-3">
                     <Button variant="secondary" className="py-1.5" onClick={() => openEditOrView(i)}>
@@ -319,32 +381,115 @@ export default function FinanceInvoicesPage() {
         </CardBody>
       </Card>
 
+      {/* --- INVOICE TIME CALENDAR MODAL --- */}
+      <Modal
+        open={calendarOpen}
+        title="Invoice Time Calendar"
+        onClose={() => setCalendarOpen(false)}
+        footer={<Button variant="secondary" onClick={() => setCalendarOpen(false)}>Close</Button>}
+      >
+        <div className="p-2">
+          {/* Calendar Controls */}
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={() => setCalDate(new Date(calDate.getFullYear(), calDate.getMonth() - 1, 1))} className="p-2 hover:bg-slate-100 rounded dark:hover:bg-slate-800">◀</button>
+            <div className="text-center">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white">
+                {calDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+              </h3>
+              
+              {/* NEW: MONTHLY STATUS BADGE */}
+              {monthStats.count > 0 ? (
+                <div className={`text-xs font-bold px-3 py-1 mt-1 rounded-full border ${
+                  monthStats.net > 0 
+                    ? "bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300" 
+                    : monthStats.net < 0
+                    ? "bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300"
+                    : "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300"
+                }`}>
+                  Month Total: {monthStats.net > 0 ? "+" : ""}{monthStats.net.toFixed(3)} DT
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400 mt-1">No invoices this month</div>
+              )}
+            </div>
+            <button onClick={() => setCalDate(new Date(calDate.getFullYear(), calDate.getMonth() + 1, 1))} className="p-2 hover:bg-slate-100 rounded dark:hover:bg-slate-800">▶</button>
+          </div>
+
+          {/* Calendar Grid */}
+          <div className="grid grid-cols-7 gap-2 text-center text-sm">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
+              <div key={d} className="font-semibold text-slate-500 py-1">{d}</div>
+            ))}
+            
+            {calendarDays.map((date, idx) => {
+              if (!date) return <div key={`empty-${idx}`} className="h-20 bg-transparent" />;
+              
+              const dateStr = date.toISOString().slice(0, 10);
+              const stats = getDailyStats(state.invoices, dateStr);
+              
+              // Color Logic
+              let bgClass = "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700"; // Default
+              let textClass = "text-slate-400";
+              let cursorClass = "cursor-default";
+              
+              if (stats.count > 0) {
+                cursorClass = "cursor-pointer hover:scale-[1.02] transition-transform shadow-sm";
+                if (stats.net > 0) {
+                  // Profit
+                  bgClass = "bg-emerald-100 border-emerald-300 dark:bg-emerald-900/40 dark:border-emerald-700";
+                  textClass = "text-emerald-700 dark:text-emerald-300";
+                } else if (stats.net < 0) {
+                  // Deficit
+                  bgClass = "bg-rose-100 border-rose-300 dark:bg-rose-900/40 dark:border-rose-700";
+                  textClass = "text-rose-700 dark:text-rose-300";
+                } else {
+                  // Break-even
+                  bgClass = "bg-amber-100 border-amber-300 dark:bg-amber-900/40 dark:border-amber-700";
+                  textClass = "text-amber-700 dark:text-amber-300";
+                }
+              }
+
+              return (
+                <div 
+                  key={dateStr}
+                  onClick={() => {
+                    if (stats.count > 0) {
+                      setFrom(dateStr);
+                      setTo(dateStr);
+                      setCalendarOpen(false);
+                    }
+                  }}
+                  className={`h-24 border rounded-lg p-1 flex flex-col justify-between ${bgClass} ${cursorClass}`}
+                >
+                  <div className="text-right text-xs font-semibold">{date.getDate()}</div>
+                  {stats.count > 0 && (
+                    <div className={`text-xs font-bold ${textClass}`}>
+                      <div>{stats.net > 0 ? "+" : ""}{stats.net.toFixed(0)}</div>
+                      <div className="text-[10px] opacity-70">{stats.count} Inv</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="mt-4 flex gap-4 text-xs text-slate-500 justify-center">
+            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-emerald-400"></span> Profit</div>
+            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-rose-400"></span> Deficit</div>
+            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-amber-400"></span> Break-even</div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* --- INVOICE CREATE/EDIT MODAL --- */}
       <Modal
         open={open}
         title="Invoice Manager"
         onClose={() => setOpen(false)}
         headerContent={
           <div className="flex gap-2 mt-4 border-b border-slate-200 dark:border-slate-700 w-full">
-            <button
-              onClick={() => setActiveTab("invoice")}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "invoice"
-                  ? "border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400"
-                  : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400"
-              }`}
-            >
-              📄 Invoice
-            </button>
-            <button
-              onClick={() => setActiveTab("settings")}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "settings"
-                  ? "border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400"
-                  : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400"
-              }`}
-            >
-              ⚙️ Settings
-            </button>
+            <button onClick={() => setActiveTab("invoice")} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "invoice" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500"}`}>📄 Invoice</button>
+            <button onClick={() => setActiveTab("settings")} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "settings" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500"}`}>⚙️ Settings</button>
           </div>
         }
         footer={
@@ -353,12 +498,7 @@ export default function FinanceInvoicesPage() {
           ) : (
             <div className="flex w-full justify-between">
               {editing ? (
-                <button 
-                  onClick={handleDelete}
-                  className="px-4 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 rounded-lg"
-                >
-                  Delete Draft
-                </button>
+                <button onClick={handleDelete} className="px-4 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 rounded-lg">Delete Draft</button>
               ) : <div />}
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
@@ -377,16 +517,10 @@ export default function FinanceInvoicesPage() {
                 
                 <div className="md:col-span-2 p-3 rounded-lg bg-slate-50 border border-slate-200 dark:bg-slate-800/50 dark:border-slate-700 flex gap-4 items-center justify-between">
                   <div className="flex gap-2">
-                    <Button variant={form.type === "IN" ? "primary" : "secondary"} className="py-1 px-3 text-xs" onClick={() => handleTypeChange("IN")}>
-                      IN (Sale)
-                    </Button>
-                    <Button variant={form.type === "OUT" ? "primary" : "secondary"} className="py-1 px-3 text-xs" onClick={() => handleTypeChange("OUT")}>
-                      OUT (Expense)
-                    </Button>
+                    <Button variant={form.type === "IN" ? "primary" : "secondary"} className="py-1 px-3 text-xs" onClick={() => handleTypeChange("IN")}>IN (Sale)</Button>
+                    <Button variant={form.type === "OUT" ? "primary" : "secondary"} className="py-1 px-3 text-xs" onClick={() => handleTypeChange("OUT")}>OUT (Expense)</Button>
                   </div>
-                  <div className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                    {form.invoiceNo}
-                  </div>
+                  <div className="text-sm font-bold text-slate-700 dark:text-slate-300">{form.invoiceNo}</div>
                 </div>
 
                 <div>
@@ -440,44 +574,20 @@ export default function FinanceInvoicesPage() {
                     const qty = Number(form.lineQty) || 0;
                     const unitHT = Number(form.lineUnitPrice) || 0;
                     const totalHT = unitHT * qty;
-
                     const rateTva = form.applyTva ? Number(form.tvaRate) || 0 : 0;
                     const rateFodec = form.applyFodec ? Number(form.fodecRate) || 0 : 0;
-                    
                     const tvaVal = totalHT * rateTva;
                     const fodecVal = totalHT * rateFodec;
                     const timbre = Number(form.timbre) || 0;
-                    
                     const grandTotal = totalHT + tvaVal + fodecVal + timbre;
 
                     return (
                       <div className="flex flex-col gap-1">
-                        <div className="flex justify-between items-center text-xs text-slate-500">
-                          <span>Total HT:</span>
-                          <span>{totalHT.toFixed(3)}</span>
-                        </div>
-                        {form.applyTva && (
-                          <div className="flex justify-between items-center text-xs text-slate-500">
-                            <span>TVA ({(rateTva * 100).toFixed(0)}%):</span>
-                            <span>{tvaVal.toFixed(3)}</span>
-                          </div>
-                        )}
-                        {form.applyFodec && (
-                          <div className="flex justify-between items-center text-xs text-slate-500">
-                            <span>FODEC ({(rateFodec * 100).toFixed(0)}%):</span>
-                            <span>{fodecVal.toFixed(3)}</span>
-                          </div>
-                        )}
-                        {timbre > 0 && (
-                          <div className="flex justify-between items-center text-xs text-slate-500">
-                            <span>Timbre:</span>
-                            <span>{timbre.toFixed(3)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between items-center font-bold border-t border-slate-300 pt-1 mt-1">
-                          <span>Total TTC:</span>
-                          <span className="text-lg text-emerald-600 dark:text-emerald-400">{grandTotal.toFixed(3)} TND</span>
-                        </div>
+                        <div className="flex justify-between items-center text-xs text-slate-500"><span>Total HT:</span><span>{totalHT.toFixed(3)}</span></div>
+                        {form.applyTva && (<div className="flex justify-between items-center text-xs text-slate-500"><span>TVA ({(rateTva * 100).toFixed(0)}%):</span><span>{tvaVal.toFixed(3)}</span></div>)}
+                        {form.applyFodec && (<div className="flex justify-between items-center text-xs text-slate-500"><span>FODEC ({(rateFodec * 100).toFixed(0)}%):</span><span>{fodecVal.toFixed(3)}</span></div>)}
+                        {timbre > 0 && (<div className="flex justify-between items-center text-xs text-slate-500"><span>Timbre:</span><span>{timbre.toFixed(3)}</span></div>)}
+                        <div className="flex justify-between items-center font-bold border-t border-slate-300 pt-1 mt-1"><span>Total TTC:</span><span className="text-lg text-emerald-600 dark:text-emerald-400">{grandTotal.toFixed(3)} TND</span></div>
                       </div>
                     );
                   })()}
@@ -490,34 +600,21 @@ export default function FinanceInvoicesPage() {
                 <div className="text-sm text-slate-500">Configure tax rates and fiscal stamps.</div>
                 <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-4">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold">Apply TVA</div>
-                      <div className="text-xs text-slate-500">Value Added Tax (19%)</div>
-                    </div>
+                    <div><div className="text-sm font-semibold">Apply TVA</div><div className="text-xs text-slate-500">Value Added Tax (19%)</div></div>
                     <div className="flex items-center gap-2">
                       <Input type="number" value={form.tvaRate} onChange={(e) => setForm(s => ({ ...s, tvaRate: e.target.value }))} className="w-20 text-right" disabled={!form.applyTva} />
-                      <button type="button" onClick={() => setForm(s => ({ ...s, applyTva: !s.applyTva }))} className={`w-12 h-6 rounded-full transition-colors relative ${form.applyTva ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${form.applyTva ? 'left-7' : 'left-1'}`} />
-                      </button>
+                      <button type="button" onClick={() => setForm(s => ({ ...s, applyTva: !s.applyTva }))} className={`w-12 h-6 rounded-full transition-colors relative ${form.applyTva ? 'bg-emerald-500' : 'bg-slate-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${form.applyTva ? 'left-7' : 'left-1'}`} /></button>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold">Apply FODEC</div>
-                      <div className="text-xs text-slate-500">Development Fund (1%)</div>
-                    </div>
+                    <div><div className="text-sm font-semibold">Apply FODEC</div><div className="text-xs text-slate-500">Development Fund (1%)</div></div>
                     <div className="flex items-center gap-2">
                       <Input type="number" value={form.fodecRate} onChange={(e) => setForm(s => ({ ...s, fodecRate: e.target.value }))} className="w-20 text-right" disabled={!form.applyFodec} />
-                      <button type="button" onClick={() => setForm(s => ({ ...s, applyFodec: !s.applyFodec }))} className={`w-12 h-6 rounded-full transition-colors relative ${form.applyFodec ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${form.applyFodec ? 'left-7' : 'left-1'}`} />
-                      </button>
+                      <button type="button" onClick={() => setForm(s => ({ ...s, applyFodec: !s.applyFodec }))} className={`w-12 h-6 rounded-full transition-colors relative ${form.applyFodec ? 'bg-emerald-500' : 'bg-slate-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${form.applyFodec ? 'left-7' : 'left-1'}`} /></button>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold">Timbre Fiscal</div>
-                      <div className="text-xs text-slate-500">Fixed</div>
-                    </div>
+                    <div><div className="text-sm font-semibold">Timbre Fiscal</div><div className="text-xs text-slate-500">Fixed</div></div>
                     <Input value={form.timbre} readOnly className="w-20 text-right bg-slate-100 text-slate-500 cursor-not-allowed" />
                   </div>
                 </div>
